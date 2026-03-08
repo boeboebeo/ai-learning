@@ -1,4 +1,4 @@
-#variables
+#Variables and Data types
 
 song_title = "Blinding Lights"  #str(문자열)
 artist = "The Weekend"  #str
