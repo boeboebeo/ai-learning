@@ -35,7 +35,7 @@ class Library:
     def show(self):
         print("My favorite books")
         print(f"\nTotal : {len(self.books)} books\n")
-        print(f"Average BPM : {self.average():.1f}")
+        print(f"Average Pages : {self.average():.1f}")
 
         for i, book in enumerate(self.books, 1):
             print(f"{i}. {book.title} - {book.author}")
