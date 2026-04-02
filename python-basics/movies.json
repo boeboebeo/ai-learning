@@ -1,0 +1,20 @@
+[
+  {
+    "title": "Inception",
+    "director": "Nolan",
+    "rating": 8.8,
+    "genre": "Sci-Fi"
+  },
+  {
+    "title": "Parasite",
+    "director": "Bong",
+    "rating": 8.5,
+    "genre": "Thriller"
+  },
+  {
+    "title": "Interstellar",
+    "director": "Nolan",
+    "rating": 8.6,
+    "genre": "Sci-Fi"
+  }
+]

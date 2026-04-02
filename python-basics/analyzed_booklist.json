@@ -1,0 +1,37 @@
+[
+  {
+    "title": "Atomic Habits",
+    "author": "James Clear",
+    "page": 320,
+    "genre": "Self-help",
+    "rating": 4.8
+  },
+  {
+    "title": "The Alchemist",
+    "author": "Paulo Coelho",
+    "page": 208,
+    "genre": "Fiction",
+    "rating": 4.5
+  },
+  {
+    "title": "Clean Code",
+    "author": "Robert Martin",
+    "page": 431,
+    "genre": "Programming",
+    "rating": 4.7
+  },
+  {
+    "title": "Sapiens",
+    "author": "Yuval Harari",
+    "page": 443,
+    "genre": "History",
+    "rating": 4.6
+  },
+  {
+    "title": "The Great Gatsby",
+    "author": "Fitzgerald",
+    "page": 180,
+    "genre": "Fiction",
+    "rating": 4.2
+  }
+]

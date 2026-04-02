@@ -1,0 +1,23 @@
+[
+  {
+    "title": "Blinding Lights",
+    "artist": "The Weeknd",
+    "bpm": 171,
+    "genre": "Pop",
+    "key": "F minor"
+  },
+  {
+    "title": "Someone Like You",
+    "artist": "Adele",
+    "bpm": 67,
+    "genre": "Ballad",
+    "key": "A major"
+  },
+  {
+    "title": "Dynamite",
+    "artist": "BTS",
+    "bpm": 114,
+    "genre": "Pop",
+    "key": "B major"
+  }
+]
