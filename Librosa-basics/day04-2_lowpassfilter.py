@@ -56,7 +56,13 @@ def estimate_lpf(y, sr):
     slope_smooth = savgol_filter(slope, window_length=21, polyorder=3) #그걸 smoothing 
     cutoff_idx_A = np.argmin(slope_smooth) #그 smoothing 된 값 중에 제일 작은 거 고르기(왜지?) 
                                         #-> 변화량이 제일 작은 걸 고르는데 왜 cutoff 가 되는지 : slope가 음수(-)인 상태가 -> 내려가는 중임 (0은 변화거의 없음)
-    cutoff_freq_A = freqs_v[cutoff_idx_A]
+    # cutoff_freq_A = freqs_v[cutoff_idx_A]
+
+    search_start = max(0, cutoff_idx_A - 30)
+    search_end = cutoff_idx_A
+
+    peak_idx = search_start + np.argmax(spectrum_v[search_start:search_end])
+    cutoff_freq_A = freqs_v[peak_idx]
 
     # slope 신뢰도 : 그 지점의 기울기가 얼마나 급격한지
     confidence_A = abs(slope_smooth[cutoff_idx_A]) 
@@ -144,12 +150,21 @@ def estimate_lpf(y, sr):
     # # resonance = peak - base #피크 강조 정도. peak(컷오프 주변 값 중) 가 base(컷오프 지점 magnitude)보다 높으면 resonance = 공진
     # resonance_ratio = peak / (base + 1e-8)  #비율로 보기
 
-    # ── Resonance 추정 ───────────────────────────────────
-    cutoff_idx_final = np.argmin(np.abs(freqs_v - cutoff_freq))
-    region = spectrum_v[max(0, cutoff_idx_final-5):cutoff_idx_final+5]
-    peak = np.max(region)
-    base = spectrum_v[cutoff_idx_final]
-    resonance_ratio = peak / (base + 1e-8)
+    # ── Resonance 추정 -> 범위가 좁아서 더 확장 ───────────────────────────────────
+    cutoff_idx_final = np.argmin(np.abs(freqs_v - cutoff_freq)) #freq_v내의 index에서 cutoff_freq 랑 제일 가까운 곳을 찾고 (제일 간격이 작은 값)
+    region_start = max(0, cutoff_idx_final - 15)   # 위에서 찾은 cut off freq index 의 -15 전의 인덱스 부터의 값에서 부터 제일 큰 값 찾기
+    region_end = min(len(spectrum_v), cutoff_idx_final + 15) 
+        #spectrum_v의 길이는 왜 세는거지..? 암튼 그 cut off index 값 +15 한 인덱스까지에서의 제일 작은 값 찾기
+        #유효 스펙트럼의 길이(index 개수) 보다 더 큰 수가 나오면 에러가 나니가 그 것보다 더 작은 수를 선택하게 함 -> 전체 인덱스 길이 넘어가면 그냥 총 Index 개수로 결정
+    region = spectrum_v[region_start:region_end]  #region 은 제일 큰 값부터, 제일 작은 값 사이의 인덱스들 
+    peak = np.max(region)  # cut off 주변 region 내의 제일 큰 진폭을 가진 값이 Peak 
+    base = spectrum_v[cutoff_idx_final] #cut off 의 인덱스를 가진 그 magnitude 가 base (base 가 여기서는 뭐말하는거야)
+                                        #cut off 지점의 값 
+    resonance_ratio = peak / (base + 1e-8) #내가 보기에 지금 peak 랑 base 가 별로 차이가 안난다는게 문제야
+
+    print(f"\npeak: {peak:.6f}")
+    print(f"base: {base:.6f}")
+    print(f"resonance_ratio: {resonance_ratio:.6f}") 
 
 
     #8. 결과정리
@@ -193,6 +208,9 @@ def estimate_lpf(y, sr):
     # threshold 선
     plt.axhline(y=threshold, color='orange', linestyle=':', label=f"threshold: {threshold:.3f}")
 
+    plt.axvline(x=cutoff_freq, color='r', linestyle='--')
+    plt.axvspan(freqs_v[region_start], freqs_v[region_end], alpha=0.2, color='blue', label="region")
+    
     plt.xscale("log")
     plt.legend()
     plt.grid(which="both")
@@ -419,7 +437,7 @@ high_mean / overall_mean  = 0.6 ~ 0.9 -> 0.5 이상 -> LPF 없다고 판단
 
 """
 git add .
-git commit -m "move: "
+git commit -m "fix: cut off 지점을 제일 peak 지점으로 바꿈(resonance 가 높을경우 대응가능)"
 git push origin main
 
 """
