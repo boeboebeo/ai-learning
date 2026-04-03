@@ -3,6 +3,8 @@
 import librosa
 import numpy as np
 import matplotlib.pyplot as plt
+from scipy.signal import savgol_filter # scipy.signal : signal processing 관련 함수들 모여있는 파이썬 패키지
+                                #savgol_filter : Savitzky-Golay 필터 구현한 함수. 신호의 노이즈를 줄이면서+피크/곡선/shape 최대한 유지. 곡률(curvature)을 보존
 
 def estimate_lpf(y, sr):
 
@@ -30,35 +32,116 @@ def estimate_lpf(y, sr):
     # print(spectrum) # 확인용 . 
     # print(np.max(spectrum)) #정규화 되었으므로 np.max(spectrum) 해보면 1 나옴.
 
-    #5. 기울기 (배열의 변화율(기울기)를 구하는 함수) . 미분의 이산버전 
-    slope = np.gradient(spectrum)
-    # print(slope)
-    with open("slope.txt","w") as f: # (1) 이렇게 해서 그래프 txt로 보거나
-        for i, val in enumerate(slope):
-            f.write(f"{i} {val}\n")
-
-    plt.plot(freqs[1:], spectrum[1:], label="spectrum") #(2) 이렇게 해서 spectrum 확인
-    plt.plot(freqs[1:], slope[1:], label="slope")   #error : x , y 가 같은 n_fft 기준으로 만들어야 함 
-    plt.xscale("log")
-    plt.legend() # 각 그래프 뭔지 알려줌 
-    plt.grid(which="both")
-    plt.show()
+    print(spectrum)
+    #new smoother (튀는 값 제거)
+    spectrum_smooth = savgol_filter(spectrum, window_length=21, polyorder=3)
+    print(spectrum_smooth)
+        #데이터를 매끄럽게 다듬는 함수
+        #window_length = 한번에 21개의 포인트를 보면서 다듬음
+        #polyorder = 3 -> 3차 다항식으로 맞춤 
+        #polyorder = 1 : 직선
+        #polyorder = 2 : U자 곡선 (2차 다항식)
+        #polyorder = 3 : S자 곡선 (3차 다항식) -> 차수가 높을수록 원본데이터와 비슷해짐
 
 
+    #new 탐색범위 제한 (200Hz ~ sr/2)
+    freq_min = 200
+    valid_mask = freqs >= freq_min # freq_min(200Hz)보다 높은 곳만 True 로 [False, False, False, True, True .. ]
+                                    # 이렇게 Boolean index 함
+    freqs_v = freqs[valid_mask]     # valid_mask 내의 True 인 것만 남게 됨 => freqs, spectrum이 같은 mask 로 잘리니까 인덱스가 계속 대응되어서 좋음
+    spectrum_v = spectrum_smooth[valid_mask]
 
-    #6. cutoff 찾기 . 가장 급격히 떨어지는 지점 -> steepest drop 찾기
-    cutoff_idx = np.argmin(slope) #가장 급격하게 하강하는 지점의 index 알려줌 
-    cutoff_freq = freqs[cutoff_idx]
+    # method A : slope 기반 
+    slope = np.gradient(spectrum_v) #변화율(기울기) 배열
+    slope_smooth = savgol_filter(slope, window_length=21, polyorder=3) #그걸 smoothing 
+    cutoff_idx_A = np.argmin(slope_smooth) #그 smoothing 된 값 중에 제일 작은 거 고르기(왜지?) 
+                                        #-> 변화량이 제일 작은 걸 고르는데 왜 cutoff 가 되는지 : slope가 음수(-)인 상태가 -> 내려가는 중임 (0은 변화거의 없음)
+    cutoff_freq_A = freqs_v[cutoff_idx_A]
 
-    #7. resonanace estimation . cutoff 주변 peak 존재 여부
-    region = spectrum[max(0, cutoff_idx-5):cutoff_idx+5] #마지막 인덱스 포함안돼서 10개의 값 불러와짐
-    print(region)
+    # slope 신뢰도 : 그 지점의 기울기가 얼마나 급격한지
+    confidence_A = abs(slope_smooth[cutoff_idx_A]) 
+        #아 slope_smooth 배열 안에 들어있는 것중에서 cuttoff_indx_A 인덱스 값을 꺼내고, 절대값 취함
+        # 변화율에 절대값 취한게 confidence_A
 
+    #method B : -3dB 기반
+    #저주파 평탄 구간 평균을 기준(0dB)로 삼음
+    flat_region = spectrum_v[:len(spectrum_v)//10] #유효한 구간의 앞 10% 구간
+    flat_mean = np.mean(flat_region)
+    threshold = flat_mean * (10 ** (-3/20))  # flat_mean의 70.8%
+
+    cutoff_idx_B = None
+    for i in range(len(spectrum_v)):
+        if spectrum_v[i] < threshold: #여러 인덱스중 threshold 보다 작은 지점이 있었는지?
+            cutoff_idx_B = i #있었다면 그 인덱스를 cutoff_idx_B 에 저장하고, break
+            break
+
+    # -3dB 신뢰도 : 떨어진 정도가 뚜렷한가
+    if cutoff_idx_B is not None: #만약 cutoff_idx_B 가 None 이 아니라면 (다른 인덱스가 들어왔다면)
+        cutoff_freq_B = freqs_v[cutoff_idx_B] #그 인덱스의 값을 cut off freq B 로 저장
+        drop = flat_mean - spectrum_v[cutoff_idx_B] 
+            # 평탄한 부분의 평균에서 그 인덱스의 magnitude 값 뺌 (?) 
+        confidence_B = drop
+
+    else:
+        cutoff_freq_B = None
+        confidence_B = 0
+
+    # ── LPF 없는 신호 감지 ───────────────────────────────
+    #고주파 영역(상위 20%) 평균이 전체 평균의 50% 이상이면 LPF 없다고 판단 
+    high_region = spectrum_v[int(len(spectrum_v)*0.8):] # 전체 주파수의 0.8 부근에서 부터 끝까지 (1까지)
+    high_mean = np.mean(high_region)
+    overall_mean = np.mean(spectrum_v)
+
+    if high_mean / (overall_mean + 1e-8) > 0.5:
+        print("No LPF detected")
+        return None, "No LPF"
+    
+    # ── 최종 선택 ────────────────────────────────────────
+    if cutoff_freq_B is not None and confidence_B > confidence_A:
+        cutoff_freq = cutoff_freq_B
+        method_used = "-3dB"
+    else:
+        cutoff_freq = cutoff_freq_A
+        method_used = "slope"
+
+    print(f"\n[slope 기반] {cutoff_freq_A:.0f}Hz (신뢰도: {confidence_A:.4f})")
+    if cutoff_freq_B:
+        print(f"[-3dB 기반] {cutoff_freq_B:.0f}Hz (신뢰도 : {confidence_B:.4f})")
+    print(f"-> 최종선택 : {method_used} 방식")
+
+
+
+    # #5. 기울기 (배열의 변화율(기울기)를 구하는 함수) . 미분의 이산버전 
+    # slope = np.gradient(spectrum)
+    # # print(slope)
+    # with open("slope.txt","w") as f: # (1) 이렇게 해서 그래프 txt로 보거나
+    #     for i, val in enumerate(slope):
+    #         f.write(f"{i} {val}\n")
+
+
+
+
+    # #6. cutoff 찾기 . 가장 급격히 떨어지는 지점 -> steepest drop 찾기
+    # cutoff_idx = np.argmin(slope) #가장 급격하게 하강하는 지점의 index 알려줌 
+    # cutoff_freq = freqs[cutoff_idx]
+
+    # #7. resonanace estimation . cutoff 주변 peak 존재 여부
+    # region = spectrum[max(0, cutoff_idx-5):cutoff_idx+5] #마지막 인덱스 포함안돼서 10개의 값 불러와짐
+    # print(region)
+
+    # peak = np.max(region)
+    # base = spectrum[cutoff_idx]  #여기를 (cutoff_idx)로 불러오려해서 에러가 났었음. 함수가 아닌데 왜 ()를 붙여서 실행하려고 하냐.. 해서 난 에러 
+
+    # # resonance = peak - base #피크 강조 정도. peak(컷오프 주변 값 중) 가 base(컷오프 지점 magnitude)보다 높으면 resonance = 공진
+    # resonance_ratio = peak / (base + 1e-8)  #비율로 보기
+
+    # ── Resonance 추정 ───────────────────────────────────
+    cutoff_idx_final = np.argmin(np.abs(freqs_v - cutoff_freq))
+    region = spectrum_v[max(0, cutoff_idx_final-5):cutoff_idx_final+5]
     peak = np.max(region)
-    base = spectrum[cutoff_idx]  #여기를 (cutoff_idx)로 불러오려해서 에러가 났었음. 함수가 아닌데 왜 ()를 붙여서 실행하려고 하냐.. 해서 난 에러 
+    base = spectrum_v[cutoff_idx_final]
+    resonance_ratio = peak / (base + 1e-8)
 
-    # resonance = peak - base #피크 강조 정도. peak(컷오프 주변 값 중) 가 base(컷오프 지점 magnitude)보다 높으면 resonance = 공진
-    resonance_ratio = peak / (base + 1e-8)  #비율로 보기
 
     #8. 결과정리
     if resonance_ratio > 1.5 :
@@ -67,16 +150,66 @@ def estimate_lpf(y, sr):
         resonance_label = "Mediun Resonance"
     else:
         resonance_label = "Low Resonance"
+
+
+    # plt.figure(figsize=(8,8))
+    # plt.plot(freqs_v[1:], spectrum_v[1:], label="spectrum") #(2) 이렇게 해서 spectrum 확인
+    # plt.plot(freqs_v[1:], slope_smooth[1:], label="slope")   #error : x , y 가 같은 n_fft 기준으로 만들어야 함 
+    # plt.axvline(x=cutoff_freq, color='r', linestyle='--', label=f"cutoff:{cutoff_freq:.0f}Hz ({method_used})")
+    # plt.xscale("log")
+    # plt.legend() # 각 그래프 뭔지 알려줌 
+    # plt.grid(which="both")
+    # plt.title("LPF Estimation")
+    # plt.show()
     
+    # ── 디버깅 용 그래프 ──────────────────────────────────────────
+    plt.figure(figsize=(14, 6))
+
+    # spectrum
+    plt.plot(freqs_v, spectrum_v, label="spectrum", alpha=0.4)
+
+    # slope
+    plt.plot(freqs_v, slope_smooth, label="slope (smoothed)", alpha=0.7)
+
+    # method A 결과
+    plt.axvline(x=cutoff_freq_A, color='blue', linestyle='--', label=f"A(slope): {cutoff_freq_A:.0f}Hz")
+
+    # method B 결과
+    if cutoff_freq_B:
+        plt.axvline(x=cutoff_freq_B, color='green', linestyle='--', label=f"B(-3dB): {cutoff_freq_B:.0f}Hz")
+
+    # 진짜 정답 (알고 있으면)
+    plt.axvline(x=5000, color='red', linestyle='-', label="COF: 5000Hz")
+
+    # threshold 선
+    plt.axhline(y=threshold, color='orange', linestyle=':', label=f"threshold: {threshold:.3f}")
+
+    plt.xscale("log")
+    plt.legend()
+    plt.grid(which="both")
+    plt.title("LPF Debugging")
+    plt.show()
+
+    #test 용..
+    # print(f"confidence_A : {confidence_A:.6f}")
+    # print(f"confidence_B : {confidence_B:.6f}")
+    # print(f"cutoff_freq_A : {cutoff_freq_A:.0f}Hz")
+    # print(f"cutoff_freq_B : {cutoff_freq_B:.0f}Hz")
+
+
+
     return cutoff_freq, resonance_label
 
 # 사용
-y, sr = librosa.load("audio_sample/saw+LPF(5000hires).wav")
+y, sr = librosa.load("Librosa-basics/audio_sample/noise+LPF(5000hires).wav")
 
 cutoff, res = estimate_lpf(y, sr)
 
-print(f"LPF cutoff : {cutoff:.0f}Hz")
-print(f"Resonance : {res}")
+if cutoff is not None:
+    print(f"\nLPF cutoff : {cutoff:.0f}Hz")
+    print(f"Resonance : {res}")
+
+
 
 
 
@@ -220,6 +353,51 @@ S[100, :] : 특정 주파수의 시간변화
 
 """
 
+"""savgol_filter
+
+전체 데이터: [a, b, c, d, e, f, g, h, i, j, k ...]
+
+window_length=5 라고 하면 (설명 편하게 5로)
+
+1번째 윈도우: [a, b, c, d, e] → 이 5개에 맞는 3차 곡선 그리기 → 가운데 c 값을 곡선값으로 교체
+2번째 윈도우:    [b, c, d, e, f] → 이 5개에 맞는 3차 곡선 그리기 → 가운데 d 값을 곡선값으로 교체
+3번째 윈도우:       [c, d, e, f, g] → ...
+
+=> 
+원본: [100, 1, 1, 1, 1]  ← 첫번째가 엄청 큼
+           ↓ 이 5개에 3차 곡선 피팅
+곡선: [80,  20, 5, 2, 1]  ← 가운데 c(=1) 가 5로 바뀜 => 곡선으로 피팅해서 자연스럽게 완만해짐. 튀는 값 완화
+
+"""
+
+
+""" -3dB
+
+dB = 20*log1O(threshold / flat_mean) 
+
+flat_mean = A_ref 역할
+spectrum_v[i] = A  => dB = 20*log( A / A_ref )
+
+
+-3dB = 20*log10(threshold / flat_mean)
+-3/20 = log10(threshold / flat_mean)
+10^(-3/20) = threshold / flat_mean
+threshold = flat_mean * 10^(-3/20)  = flat_mean * (10**(-3/20))
+
+= 약 0.708
+
+"""
+
+""" LPF 의 상위 20%, 평탄한 부분으 50%
+
+LPF 가 걸린 신호 : 고주파 에너지 거의 없음
+high_mean / overall_mean = 0.1 ~ 0.2 -> 0.5 미만 -> LPF 있다고 판단
+
+LPF 없는 신호 : 고주파 에너지 충분히 살아있음
+high_mean / overall_mean  = 0.6 ~ 0.9 -> 0.5 이상 -> LPF 없다고 판단 
+
+"""
+
 
 
 """
@@ -227,5 +405,12 @@ S[100, :] : 특정 주파수의 시간변화
 - 복소수
 - 미분의 이산버전(?)
 - 중앙 차분 
+
+"""
+
+"""
+git add .
+git commit -m "move: "
+git push origin main
 
 """
