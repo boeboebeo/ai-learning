@@ -62,18 +62,31 @@ def estimate_lpf(y, sr):
     search_end = cutoff_idx_A
 
     peak_idx = search_start + np.argmax(spectrum_v[search_start:search_end])
-    cutoff_freq_A = freqs_v[peak_idx]
+
+
+    
+
+    cutoff_freq_A = freqs_v[peak_idx] 
+        # 아 근데 A method 는 그 피크 지점을 cutoff freq 로 지정하면 안됨!!! 
+        # 그래서 만약 레조넌스 있다면 A, 그리고 없다면 B의 -3dB지점을 컷오프로 지정하게끔 만들어줘야 할듯
+
 
     # slope 신뢰도 : 그 지점의 기울기가 얼마나 급격한지
-    confidence_A = abs(slope_smooth[cutoff_idx_A]) 
+    # confidence_A = abs(slope_smooth[cutoff_idx_A]) 
         #아 slope_smooth 배열 안에 들어있는 것중에서 cuttoff_indx_A 인덱스 값을 꺼내고, 절대값 취함
         # 변화율에 절대값 취한게 confidence_A
 
     #method B : -3dB 기반
     #저주파 평탄 구간 평균을 기준(0dB)로 삼음
     flat_region = spectrum_v[:len(spectrum_v)//10] #유효한 구간의 앞 10% 구간
+        #dB 변환
+    spectrum_db = 20*np.log10(spectrum_v + 1e-10) #log(0) 방지
+        # y축 dB로 할랬더니, x y 가 다 같게 매칭되는 값이여야 된다 해서 spectrum_v + 1e-10으로 바꿈 
     flat_mean = np.mean(flat_region)
+    # flat_mean_db = np.mean(spectrum_db[:len(spectrum_db)//10])
+    # threshold = flat_mean_db - 3
     threshold = flat_mean * (10 ** (-3/20))  # flat_mean의 70.8%
+    
 
     cutoff_idx_B = None
     for i in range(len(spectrum_v)):
@@ -104,9 +117,10 @@ def estimate_lpf(y, sr):
     
 
 
+
     # ── 최종 선택 ────────────────────────────────────────
-    cutoff_freq = cutoff_freq_A
-    method_used = "slope"
+    # cutoff_freq = cutoff_freq_A
+    # method_used = "slope"
 
     if cutoff_freq_B and abs(cutoff_freq_A - cutoff_freq_B) > 1000:
         print(f"A({cutoff_freq_A:.0f}Hz) 와 B({cutoff_freq_B:.0f}Hz)차이가 큼 -> 결과 불확실")
@@ -114,7 +128,7 @@ def estimate_lpf(y, sr):
     
     # if cutoff_freq_B is not None and confidence_B > confidence_A:
     #     cutoff_freq = cutoff_freq_B
-    #     method_used = "-3dB"
+    #     그method_used = "-3dB"
     # else:
     #     cutoff_freq = cutoff_freq_A
     #     method_used = "slope"
@@ -133,6 +147,19 @@ def estimate_lpf(y, sr):
     #     for i, val in enumerate(slope):
     #         f.write(f"{i} {val}\n")
 
+    # resonance 있는지 먼저 판단하고 A or B 결정
+    peak_candidate = np.max(spectrum_v)
+    flat_mean_ratio = peak_candidate / flat_mean
+
+    if flat_mean_ratio > 1.3:
+        #A방식 : peak 지점을 컷오프로
+        cutoff_freq = cutoff_freq_A
+        method_used = "slope(resonance)"
+
+    else :
+        #B방식 : -3dB 지점을 컷오프로
+        cutoff_freq = cutoff_freq_B
+        method_used = "-3dB"
 
 
 
@@ -182,6 +209,8 @@ def estimate_lpf(y, sr):
         resonance_label = "Low Resonance"
 
 
+
+
     # plt.figure(figsize=(8,8))
     # plt.plot(freqs_v[1:], spectrum_v[1:], label="spectrum") #(2) 이렇게 해서 spectrum 확인
     # plt.plot(freqs_v[1:], slope_smooth[1:], label="slope")   #error : x , y 가 같은 n_fft 기준으로 만들어야 함 
@@ -193,10 +222,16 @@ def estimate_lpf(y, sr):
     # plt.show()
     
     # ── 디버깅 용 그래프 ──────────────────────────────────────────
+
+
+
+    print(len(freqs_v), len(spectrum_v), len(slope_smooth), len(spectrum_db))
+        #다 같게 나옴 이제
+
     plt.figure(figsize=(14, 6))
 
     # spectrum
-    plt.plot(freqs_v, spectrum_v, label="spectrum", alpha=0.4)
+    plt.plot(freqs_v, spectrum_db, label="spectrum", alpha=0.4)
 
     # slope
     plt.plot(freqs_v, slope_smooth, label="slope (smoothed)", alpha=0.7)
@@ -222,6 +257,7 @@ def estimate_lpf(y, sr):
     plt.axhline(y=base, color='brown', linestyle='--', label=f"base value: {base:.3f}")
 
     plt.xscale("log")
+    plt.ylabel("Amplitude(dB)")
     plt.legend()
     plt.grid(which="both")
     plt.title("LPF Debugging")
@@ -235,15 +271,15 @@ def estimate_lpf(y, sr):
 
 
 
-    return cutoff_freq, resonance_label
+    return cutoff_freq, resonance_label, method_used
 
 # 사용
 y, sr = librosa.load("Librosa-basics/audio_sample/noise+LPF(5000hires).wav")
 
-cutoff, res = estimate_lpf(y, sr)
+cutoff, res, meth_used = estimate_lpf(y, sr)
 
 if cutoff is not None:
-    print(f"\nLPF cutoff : {cutoff:.0f}Hz")
+    print(f"\nLPF cutoff : {cutoff:.0f}Hz ({meth_used})")
     print(f"Resonance : {res}")
 
 
@@ -447,7 +483,7 @@ high_mean / overall_mean  = 0.6 ~ 0.9 -> 0.5 이상 -> LPF 없다고 판단
 
 """
 git add .
-git commit -m "fix: cut off 지점을 제일 peak 지점으로 바꿈(resonance 가 높을경우 대응가능)"
+git commit -m "fix: Resonance 있는 파형, 없는 파형 둘다 대응하게 만듦. Cut off 오차 200Hz 이내 "
 git push origin main
 
 """
