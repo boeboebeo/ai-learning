@@ -151,6 +151,7 @@ def estimate_lpf(y, sr):
     # resonance_ratio = peak / (base + 1e-8)  #비율로 보기
 
     # ── Resonance 추정 -> 범위가 좁아서 더 확장 ───────────────────────────────────
+    # 레조넌스가 있는경우 cut off 지점이 base 가 될 수 없음 -> 변경 필요
     cutoff_idx_final = np.argmin(np.abs(freqs_v - cutoff_freq)) #freq_v내의 index에서 cutoff_freq 랑 제일 가까운 곳을 찾고 (제일 간격이 작은 값)
     region_start = max(0, cutoff_idx_final - 15)   # 위에서 찾은 cut off freq index 의 -15 전의 인덱스 부터의 값에서 부터 제일 큰 값 찾기
     region_end = min(len(spectrum_v), cutoff_idx_final + 15) 
@@ -158,9 +159,14 @@ def estimate_lpf(y, sr):
         #유효 스펙트럼의 길이(index 개수) 보다 더 큰 수가 나오면 에러가 나니가 그 것보다 더 작은 수를 선택하게 함 -> 전체 인덱스 길이 넘어가면 그냥 총 Index 개수로 결정
     region = spectrum_v[region_start:region_end]  #region 은 제일 큰 값부터, 제일 작은 값 사이의 인덱스들 
     peak = np.max(region)  # cut off 주변 region 내의 제일 큰 진폭을 가진 값이 Peak 
-    base = spectrum_v[cutoff_idx_final] #cut off 의 인덱스를 가진 그 magnitude 가 base (base 가 여기서는 뭐말하는거야)
+
+    # base = spectrum_v[cutoff_idx_final] #cut off 의 인덱스를 가진 그 magnitude 가 base (base 가 여기서는 뭐말하는거야)
                                         #cut off 지점의 값 
+                                        #근데 지금은 cut off 지점을 base 로 처리하게 되면 안됨. cut off 가 곧 peak 지점 이기 때문에
+    # flat_before_cutoff = spectrum_v[max(0, cutoff_idx_final - 1000):cutoff_idx_final - 20]
+    base = np.mean(flat_mean)
     resonance_ratio = peak / (base + 1e-8) #내가 보기에 지금 peak 랑 base 가 별로 차이가 안난다는게 문제야
+
 
     print(f"\npeak: {peak:.6f}")
     print(f"base: {base:.6f}")
@@ -203,14 +209,18 @@ def estimate_lpf(y, sr):
         plt.axvline(x=cutoff_freq_B, color='green', linestyle='--', label=f"B(-3dB): {cutoff_freq_B:.0f}Hz")
 
     # 진짜 정답 (알고 있으면)
-    plt.axvline(x=5000, color='red', linestyle='-', label="COF: 5000Hz")
+    # plt.axvline(x=5000, color='red', linestyle='-', label="COF: 5000Hz")
 
     # threshold 선
     plt.axhline(y=threshold, color='orange', linestyle=':', label=f"threshold: {threshold:.3f}")
 
     plt.axvline(x=cutoff_freq, color='r', linestyle='--')
     plt.axvspan(freqs_v[region_start], freqs_v[region_end], alpha=0.2, color='blue', label="region")
-    
+    #어디가 문제인지 보기위해서 점 찍어보기 
+    plt.axvline(x=freqs_v[cutoff_idx_final], color='purple', linestyle='--', label=f"cut off: {base:.3f}")
+    plt.axhline(y=peak, color='pink', linestyle='--', label=f"peak: {peak:.3f}")
+    plt.axhline(y=base, color='brown', linestyle='--', label=f"base value: {base:.3f}")
+
     plt.xscale("log")
     plt.legend()
     plt.grid(which="both")
