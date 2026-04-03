@@ -32,10 +32,10 @@ def estimate_lpf(y, sr):
     # print(spectrum) # 확인용 . 
     # print(np.max(spectrum)) #정규화 되었으므로 np.max(spectrum) 해보면 1 나옴.
 
-    print(spectrum)
+    # print(spectrum)
     #new smoother (튀는 값 제거)
     spectrum_smooth = savgol_filter(spectrum, window_length=21, polyorder=3)
-    print(spectrum_smooth)
+    # print(spectrum_smooth)
         #데이터를 매끄럽게 다듬는 함수
         #window_length = 한번에 21개의 포인트를 보면서 다듬음
         #polyorder = 3 -> 3차 다항식으로 맞춤 
@@ -96,18 +96,27 @@ def estimate_lpf(y, sr):
         print("No LPF detected")
         return None, "No LPF"
     
-    # ── 최종 선택 ────────────────────────────────────────
-    if cutoff_freq_B is not None and confidence_B > confidence_A:
-        cutoff_freq = cutoff_freq_B
-        method_used = "-3dB"
-    else:
-        cutoff_freq = cutoff_freq_A
-        method_used = "slope"
 
-    print(f"\n[slope 기반] {cutoff_freq_A:.0f}Hz (신뢰도: {confidence_A:.4f})")
-    if cutoff_freq_B:
-        print(f"[-3dB 기반] {cutoff_freq_B:.0f}Hz (신뢰도 : {confidence_B:.4f})")
-    print(f"-> 최종선택 : {method_used} 방식")
+
+    # ── 최종 선택 ────────────────────────────────────────
+    cutoff_freq = cutoff_freq_A
+    method_used = "slope"
+
+    if cutoff_freq_B and abs(cutoff_freq_A - cutoff_freq_B) > 1000:
+        print(f"A({cutoff_freq_A:.0f}Hz) 와 B({cutoff_freq_B:.0f}Hz)차이가 큼 -> 결과 불확실")
+
+    
+    # if cutoff_freq_B is not None and confidence_B > confidence_A:
+    #     cutoff_freq = cutoff_freq_B
+    #     method_used = "-3dB"
+    # else:
+    #     cutoff_freq = cutoff_freq_A
+    #     method_used = "slope"
+
+    # print(f"\n[slope 기반] {cutoff_freq_A:.0f}Hz (신뢰도: {confidence_A:.4f})")
+    # if cutoff_freq_B:
+    #     print(f"[-3dB 기반] {cutoff_freq_B:.0f}Hz (신뢰도 : {confidence_B:.4f})")
+    # print(f"-> 최종선택 : {method_used} 방식")
 
 
 
