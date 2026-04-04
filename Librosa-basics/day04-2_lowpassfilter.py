@@ -1,4 +1,7 @@
 #day 04-2 low pass filter - COF , RES 구하기
+    #오케이 우선은.. noise 에서는 200Hz 안으로 오차가 없이 resonance 까지 잘 추출하다가
+    #saw 가 들어오니 평탄한 파형이 아니라서.... 에러생기고 위 아래 왔다갔다 수정하다가 우선 
+    #코드 정리 먼저 하기로.. => "day05-1_lowpassfilter_sawvsnoise" 여기에 정리해놓음
 
 import librosa
 import numpy as np
@@ -43,26 +46,99 @@ def estimate_lpf(y, sr):
         #polyorder = 2 : U자 곡선 (2차 다항식)
         #polyorder = 3 : S자 곡선 (3차 다항식) -> 차수가 높을수록 원본데이터와 비슷해짐
 
+    
 
     #new 탐색범위 제한 (200Hz ~ sr/2)
-    freq_min = 200
+    freq_min = 70
     valid_mask = freqs >= freq_min # freq_min(200Hz)보다 높은 곳만 True 로 [False, False, False, True, True .. ]
                                     # 이렇게 Boolean index 함
     freqs_v = freqs[valid_mask]     # valid_mask 내의 True 인 것만 남게 됨 => freqs, spectrum이 같은 mask 로 잘리니까 인덱스가 계속 대응되어서 좋음
     spectrum_v = spectrum_smooth[valid_mask]
+
+    flat_region = spectrum_v[:len(spectrum_v)//10] #유효한 구간의 앞 10% 구간
+        #dB 변환
+    spectrum_db = 20*np.log10(spectrum_v + 1e-10) #log(0) 방지
+        # y축 dB로 할랬더니, x y 가 다 같게 매칭되는 값이여야 된다 해서 spectrum_v + 1e-10으로 바꿈 
+    flat_mean = np.mean(flat_region)
+    threshold = flat_mean * (10 ** (-3/20))  # flat_mean의 70.8%
+
+
 
     # method A : slope 기반 
     slope = np.gradient(spectrum_v) #변화율(기울기) 배열
     slope_smooth = savgol_filter(slope, window_length=21, polyorder=3) #그걸 smoothing 
     cutoff_idx_A = np.argmin(slope_smooth) #그 smoothing 된 값 중에 제일 작은 거 고르기(왜지?) 
                                         #-> 변화량이 제일 작은 걸 고르는데 왜 cutoff 가 되는지 : slope가 음수(-)인 상태가 -> 내려가는 중임 (0은 변화거의 없음)
+
+    
+    cutoff_idx_B = None
+    for i in range(len(spectrum_v)):
+        if spectrum_v[i] < threshold: #여러 인덱스중 threshold 보다 작은 지점이 있었는지?
+            cutoff_idx_B = i #있었다면 그 인덱스를 cutoff_idx_B 에 저장하고, break
+            break
+
+    
+    # -3dB 신뢰도 : 떨어진 정도가 뚜렷한가
+    if cutoff_idx_B is not None: #만약 cutoff_idx_B 가 None 이 아니라면 (다른 인덱스가 들어왔다면)
+        cutoff_freq_B = freqs_v[cutoff_idx_B] #그 인덱스의 값을 cut off freq B 로 저장
+        drop = flat_mean - spectrum_v[cutoff_idx_B] 
+            # 평탄한 부분의 평균에서 그 인덱스의 magnitude 값 뺌 (?) 
+        confidence_B = drop
+
+    else:
+        cutoff_freq_B = None
+        confidence_B = 0
+
+
+    # resonance 있는지 먼저 판단하고 A or B 결정 => (1)번의 방식으로 한번 resonance 유무 부터 판단해보기로 
+    peak_candidate = np.max(spectrum_v)
+    flat_mean_ratio = peak_candidate / flat_mean
+
+    if flat_mean_ratio > 1.3:
+        #A방식 : peak 지점을 컷오프로
+        search_start = max(0, cutoff_idx_A - 30)
+        search_end = cutoff_idx_A
+        peak_idx = search_start + np.argmax(spectrum_v[search_start:search_end])
+        cutoff_freq = freqs_v[peak_idx]
+        method_used = "slope(resonance)"
+
+    else :
+        #B방식 : -3dB 지점을 컷오프로
+        cutoff_freq = cutoff_freq_B
+        method_used = "-3dB"
+
+
+    # # method A : slope 기반 
+    # slope = np.gradient(spectrum_v) #변화율(기울기) 배열
+    # slope_smooth = savgol_filter(slope, window_length=21, polyorder=3) #그걸 smoothing 
+    # cutoff_idx_A = np.argmin(slope_smooth) #그 smoothing 된 값 중에 제일 작은 거 고르기(왜지?) 
+    #                                     #-> 변화량이 제일 작은 걸 고르는데 왜 cutoff 가 되는지 : slope가 음수(-)인 상태가 -> 내려가는 중임 (0은 변화거의 없음)
     # cutoff_freq_A = freqs_v[cutoff_idx_A]
 
-    search_start = max(0, cutoff_idx_A - 30)
-    search_end = cutoff_idx_A
 
-    peak_idx = search_start + np.argmax(spectrum_v[search_start:search_end])
 
+    # saw 를 넣었을때 ValueError: attempt to get argmax of an empty sequence 잡는중
+    print(spectrum_v[search_start:search_end]) #아하 출력해보니까 여기의 이 리스트가 비어있음 
+
+    print(cutoff_idx_A) #왜 컷오프 인덱스가 0으로 나오지???
+    print(freqs_v)
+    print(spectrum_v)
+    print(slope_smooth)
+
+    # peak_idx = search_start + np.argmax(spectrum_v[search_start:search_end])
+        #white 노이즈의 경우 전 주파수 레벨이 평탄하기 때문에 peak 로 cutoff freq를 구하는것이 가능했음. 
+        #근데 sawtooth 라면? -> 현재 error : 특히 argmax()쓸때, array 나 list 안에 아무런 요소도 안들어 있음
+        #=> saw 의 경우는 기음에서 바로 뚝떨어지니까 slope 가 맨앞 index 0 근처에서 제일 가파르게 내려감. 그래서 argmin : 0 을 반환 (index 0 : 처음 주파수 빈)
+        # 가장 급격히 떨어지는 곳을 찾아야 하는데, saw 는 기음의 drop 에 낚이고 있음
+    
+    """ 여기서.. 처리 방법
+    (1) resonance 가 없는 saw 면 그냥 바로 confidence B의 방법으로 가게끔 처리하면 되는데, 
+        => 그러면 결국 resonance 가 있는 saw 에서는 대응이 안되긴 함 
+    
+    (2) 기음을 무시하고 일정 주파수 이상에서만 탐색하게 함
+        => 근데 그럼 컷오프가 ex. 1000Hz (이걸 min 으로 설정했을때) 이하라면 못잡는 일이 발생함.
+    
+    """
 
     
 
@@ -78,32 +154,32 @@ def estimate_lpf(y, sr):
 
     #method B : -3dB 기반
     #저주파 평탄 구간 평균을 기준(0dB)로 삼음
-    flat_region = spectrum_v[:len(spectrum_v)//10] #유효한 구간의 앞 10% 구간
-        #dB 변환
-    spectrum_db = 20*np.log10(spectrum_v + 1e-10) #log(0) 방지
-        # y축 dB로 할랬더니, x y 가 다 같게 매칭되는 값이여야 된다 해서 spectrum_v + 1e-10으로 바꿈 
-    flat_mean = np.mean(flat_region)
+    # flat_region = spectrum_v[:len(spectrum_v)//10] #유효한 구간의 앞 10% 구간
+    #     #dB 변환
+    # spectrum_db = 20*np.log10(spectrum_v + 1e-10) #log(0) 방지
+    #     # y축 dB로 할랬더니, x y 가 다 같게 매칭되는 값이여야 된다 해서 spectrum_v + 1e-10으로 바꿈 
+    # flat_mean = np.mean(flat_region)
     # flat_mean_db = np.mean(spectrum_db[:len(spectrum_db)//10])
     # threshold = flat_mean_db - 3
-    threshold = flat_mean * (10 ** (-3/20))  # flat_mean의 70.8%
+    # threshold = flat_mean * (10 ** (-3/20))  # flat_mean의 70.8%
     
 
-    cutoff_idx_B = None
-    for i in range(len(spectrum_v)):
-        if spectrum_v[i] < threshold: #여러 인덱스중 threshold 보다 작은 지점이 있었는지?
-            cutoff_idx_B = i #있었다면 그 인덱스를 cutoff_idx_B 에 저장하고, break
-            break
+    # cutoff_idx_B = None
+    # for i in range(len(spectrum_v)):
+    #     if spectrum_v[i] < threshold: #여러 인덱스중 threshold 보다 작은 지점이 있었는지?
+    #         cutoff_idx_B = i #있었다면 그 인덱스를 cutoff_idx_B 에 저장하고, break
+    #         break
 
-    # -3dB 신뢰도 : 떨어진 정도가 뚜렷한가
-    if cutoff_idx_B is not None: #만약 cutoff_idx_B 가 None 이 아니라면 (다른 인덱스가 들어왔다면)
-        cutoff_freq_B = freqs_v[cutoff_idx_B] #그 인덱스의 값을 cut off freq B 로 저장
-        drop = flat_mean - spectrum_v[cutoff_idx_B] 
-            # 평탄한 부분의 평균에서 그 인덱스의 magnitude 값 뺌 (?) 
-        confidence_B = drop
+    # # -3dB 신뢰도 : 떨어진 정도가 뚜렷한가
+    # if cutoff_idx_B is not None: #만약 cutoff_idx_B 가 None 이 아니라면 (다른 인덱스가 들어왔다면)
+    #     cutoff_freq_B = freqs_v[cutoff_idx_B] #그 인덱스의 값을 cut off freq B 로 저장
+    #     drop = flat_mean - spectrum_v[cutoff_idx_B] 
+    #         # 평탄한 부분의 평균에서 그 인덱스의 magnitude 값 뺌 (?) 
+    #     confidence_B = drop
 
-    else:
-        cutoff_freq_B = None
-        confidence_B = 0
+    # else:
+    #     cutoff_freq_B = None
+    #     confidence_B = 0
 
     # ── LPF 없는 신호 감지 ───────────────────────────────
     #고주파 영역(상위 20%) 평균이 전체 평균의 50% 이상이면 LPF 없다고 판단 
@@ -147,19 +223,6 @@ def estimate_lpf(y, sr):
     #     for i, val in enumerate(slope):
     #         f.write(f"{i} {val}\n")
 
-    # resonance 있는지 먼저 판단하고 A or B 결정
-    peak_candidate = np.max(spectrum_v)
-    flat_mean_ratio = peak_candidate / flat_mean
-
-    if flat_mean_ratio > 1.3:
-        #A방식 : peak 지점을 컷오프로
-        cutoff_freq = cutoff_freq_A
-        method_used = "slope(resonance)"
-
-    else :
-        #B방식 : -3dB 지점을 컷오프로
-        cutoff_freq = cutoff_freq_B
-        method_used = "-3dB"
 
 
 
@@ -274,7 +337,7 @@ def estimate_lpf(y, sr):
     return cutoff_freq, resonance_label, method_used
 
 # 사용
-y, sr = librosa.load("Librosa-basics/audio_sample/noise+LPF(5000hires).wav")
+y, sr = librosa.load("Librosa-basics/audio_sample/saw+LPF(700).wav")
 
 cutoff, res, meth_used = estimate_lpf(y, sr)
 
