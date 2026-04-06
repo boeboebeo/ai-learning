@@ -120,6 +120,9 @@ audio_files = [
     "Librosa-basics/audio_sample/noise+LPF(1000).wav",
     "Librosa-basics/audio_sample/noise+LPF(5000hires).wav",
     "Librosa-basics/audio_sample/noise+LPF(5000res).wav",
+    "Librosa-basics/audio_sample/square+LPF(nofilter).wav",
+    "Librosa-basics/audio_sample/square+LPF(2000).wav",
+    "Librosa-basics/audio_sample/square+LPF(1100hires).wav",    
 ]
 
 print("=" * 50)

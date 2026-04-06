@@ -546,7 +546,7 @@ high_mean / overall_mean  = 0.6 ~ 0.9 -> 0.5 이상 -> LPF 없다고 판단
 
 """
 git add .
-git commit -m "fix: Resonance 있는 파형, 없는 파형 둘다 대응하게 만듦. Cut off 오차 200Hz 이내 "
+git commit -m "test : add square wave "
 git push origin main
 
 wip : work in progress. 아직 작업중(미완인 프로젝트 올릴때 쓰는 커밋 컨벤션(관습))
