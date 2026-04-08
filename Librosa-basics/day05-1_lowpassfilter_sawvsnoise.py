@@ -7,6 +7,22 @@ import matplotlib.pyplot as plt
 import os   #python 기본 내장모듈. Operating System . 운영체제와 상호작용하는 기능 제공
 from scipy.signal import savgol_filter 
 
+def analyze_peak_width(spectrum, threshold_ratio = 0.7):
+    #peak 폭 측정 
+    max_val = np.max(spectrum)
+    threshold = max_val * threshold_ratio
+
+    above_threshold = spectrum > threshold
+    diff = np.diff(np.concatenate([[0], above_threshold, [0]]).astype(int))
+    starts = np.where(diff == 1)[0]
+    ends = np.where(diff == -1)[0]
+
+    if len(starts) == 0:
+        return 0
+    
+    max_width = np.max(ends - starts)
+    return max_width
+
 
 def estimate_lpf(y, sr):
 
@@ -35,6 +51,7 @@ def estimate_lpf(y, sr):
 
     # 6. 평탄구간 평균 (base, threshold 계산용)
     flat_mean = np.mean(spectrum_v[:len(spectrum_v)//10])
+    # flat_mean = np.median(spectrum_v[:50]) -> 역효과 나서 버림
     threshold = flat_mean * (10 ** (-3/20)) #flat_mean에서 -3dB된 레벨이 threshold
 
     # 7. LPF 없는 신호 감지
@@ -51,6 +68,8 @@ def estimate_lpf(y, sr):
     cutoff_idx_A = np.argmin(slope_smooth) 
         #변화율이 제일 -쪽으로 작은 값을 cutoff_idx_A로 넣음
         #변화율이 제일 큰 것! 
+    actual_freq = freqs_v[8]
+    # print(actual_freq) #실제 주파수 확인 
 
     # 9. -3dB 계산 (B방식 준비)
     cutoff_idx_B = None
@@ -59,6 +78,7 @@ def estimate_lpf(y, sr):
             cutoff_idx_B = i
             break
     cutoff_freq_B = freqs_v[cutoff_idx_B] if cutoff_idx_B is not None else None
+    # print(cutoff_freq_B)
 
     # 10. resonance 유무 판단 -> 방식 선택
     peak_candidate = np.max(spectrum_v) #제일 높은 magnitude 를 가진 주파수빈
@@ -66,7 +86,17 @@ def estimate_lpf(y, sr):
         #제일 높은 magnitude / 평평한 곳의 평균치 => 이게 높으면 resonance가 있다고 판단
         #근데 만약, sawtooth 이고, resonance 가 그렇게 높지 않다면? 
         # -> 그래서 sawtooth 의 기음이 제일 높다면? 
+    # print(f"peak_candidate : {peak_candidate}")
+    print(f"flat_mean : {flat_mean}")
+    print(f"flat_mean_ratio : {flat_mean_ratio}")
+    # resonance는 보통 특정 범위에 몰려있음
+    print(f"cutoff_idx_A: {cutoff_idx_A}")
 
+    # -- 새 함수 호출 ------------------------------------------------------
+    peak_width = analyze_peak_width(spectrum_v, threshold_ratio = 0.7)
+    # print(f"peak_width : {peak_width}")
+    
+    # if flat_mean_ratio > 1.3 and cutoff_idx_A >0 and peak_width > 15:  # 좁은 peak만
     if flat_mean_ratio > 1.3 and cutoff_idx_A > 0: 
         # cutoff_idx_A 는 위에서 gradient 를 계산한거이기때문에 만약 첫번째 인덱스에서 slope이 가장 작을수도 있음
         # ex. slope_smooth = [-100, -50, -30, -20, ...] => cutoff_idx_A = 0 도 가능
@@ -81,6 +111,7 @@ def estimate_lpf(y, sr):
             peak_idx = search_start + np.argmax(spectrum_v[search_start:search_end]) # cut off freq 지점은 떨어지는 시작점이기때문에 peak 찾는 범위 안에 포함되지 않아도 됨
                 # 상대적인 인덱스가 나오는 걸 방지 
                 # 그냥 peak_idx = np.argmax(spectrum_v[20:50])을 하게되면 원본 배열의 위치가 아님(그냥 0 ~ 29 사이의 값 반환함 . 슬라이스 내 상대 인덱스)
+            print(freqs_v[peak_idx]) #얘 때문에 cutoff freq 가 그냥 peak 값으로 찍힘
             cutoff_freq = freqs_v[peak_idx]
         else:   #검색할 범위가 없다면 (빈 배열) -> peak를 못찾겠으니 그냥 cutoff 지점을 사용 
             cutoff_freq = freqs_v[cutoff_idx_A]
@@ -112,17 +143,21 @@ def estimate_lpf(y, sr):
 
 # 테스트할 오디오 파일 목록 (한번에 테스트 되게 하기)
 audio_files = [
-    "Librosa-basics/audio_sample/saw+LPF(700).wav",
+    # "Librosa-basics/audio_sample/saw+LPF(700).wav",
     "Librosa-basics/audio_sample/saw+LPF(5000hires).wav",
-    "Librosa-basics/audio_sample/saw+LPF(300).wav",
-    "Librosa-basics/audio_sample/saw+LPF(nofilter).wav",
-    "Librosa-basics/audio_sample/noise+LPF(300).wav",
-    "Librosa-basics/audio_sample/noise+LPF(1000).wav",
-    "Librosa-basics/audio_sample/noise+LPF(5000hires).wav",
-    "Librosa-basics/audio_sample/noise+LPF(5000res).wav",
-    "Librosa-basics/audio_sample/square+LPF(nofilter).wav",
-    "Librosa-basics/audio_sample/square+LPF(2000).wav",
-    "Librosa-basics/audio_sample/square+LPF(1100hires).wav",    
+    # "Librosa-basics/audio_sample/saw+LPF(300).wav",
+    # "Librosa-basics/audio_sample/saw+LPF(nofilter).wav",
+    # "Librosa-basics/audio_sample/noise+LPF(300).wav",
+    # "Librosa-basics/audio_sample/noise+LPF(1000).wav",
+    # "Librosa-basics/audio_sample/noise+LPF(5000hires).wav",
+    # "Librosa-basics/audio_sample/noise+LPF(5000res).wav",
+    # "Librosa-basics/audio_sample/square+LPF(nofilter).wav",
+    # "Librosa-basics/audio_sample/square+LPF(2000).wav",      
+        #fundamental = 220 이라서 그런지 자꾸 COF 가 221로 나옴.
+        #아마 peak_idx 때문일 확률 높음
+
+    # "Librosa-basics/audio_sample/square+LPF(1100hires).wav", 
+    # "Librosa-basics/audio_sample/square+LPF(645mires).wav",  #fundamental > resonance Hz  
 ]
 
 print("=" * 50)
@@ -133,7 +168,7 @@ for i, path in enumerate(audio_files): #enumerate 로 인덱스 추가
     
     if cutoff is not None:
         print(f"[{filename}]")
-        print(f"  COF      : {cutoff:.0f}Hz ({meth_used})")
+        print(f"  COF      : {cutoff:.0f}Hz ({meth_used})") #여기서 cutoff freq 를 반올림하고 있기때문에 220.7153.. 인 peak 값에서 반올림되어서 얘기 COF로 나옴
         print(f"  Resonance: {res}")
     else:
         print(f"[{filename}] No LPF detected") #cutoff 값이 None 이라면 
@@ -143,4 +178,69 @@ for i, path in enumerate(audio_files): #enumerate 로 인덱스 추가
         print("-" * 50)
 
 print("=" *50)  
+
+
+"""
+ex. 
+
+sr = 44100
+n_fft = 2048
+
+#주파수 bins 개수
+n_bins = n_fft // 2 + 1 = 1025개 #0~1024 까지의 주파수 빈 존재
+
+#최대 주파수 : 나이퀴스트
+max_freq = sr / 2 = 22050Hz 
+
+#주파수 간격
+freq_step 
+    = max_freq(=sr/2) / (n_fft/2)
+    = 22050 / 1024
+    = 21.53Hz
+            
+
+#주파수 배열 :
+freq[0] : 0Hz
+freq[1] : 21.53Hz
+freq[2] : 43.07Hz
+
+...
+
+freqs[1024] : 21.53 * 1024 = 22050Hz
+
+cutoff_idx_A가 8이라고 나와서 계산했더니 243Hz 정도로 나옴 .
+
+"""
+
+"""
+"Librosa-basics/audio_sample/square+LPF(2000).wav", 의 COF 가 맞지 않는 issue 발생 !
+
+=> 우선 flat_mean_ratio 값이 거의 6정도로 매우 커서
+    그 안에 있는 if 문의 peak_idx로 cutoff freq 가 잡혀버리고 만다 
+    우선 flat_mean_ratio 는 peak_candidate / flat_mean 한 값인데, 
+    아마 peak_candidate 은 220Hz 일거고 (기음) 
+    -> flat_mean 은 200Hz 부터 10indx 뒤 까지인 200 + 21.53*10 인 약 430Hz 까지이고, 
+        거기 까지는 220Hz 말고는 뭐가 없기 때문에 평균을 구하면 매우 작은 수가 나와 저렇게 flat_mean_ratio 가 엄청 커져버림
+
+        => 해결방안(1) : 
+            flat_mean 구할때 평균을 내지말고, 극단값에 덜 민감한(위의 사례에서의 기음 : 220Hz)
+            np.median 사용해보기 -> 평균이 아닌 중앙값을 냄 
+            flat_mean = np.median(spectrum_v[:50])
+                => 결과 : 
+                    flat_mean이 더 올라가버림 .. 역효과 ! median 이 더 작아져서 비율이 더 커짐 
+
+        => 해결방안(2) : 
+            flat_mean = np.mean(spectrum_v[100:150]) 
+            이렇게 맨 앞값이 아닌 중간값을 사용해보기 
+
+        => 해결방안(3) : 
+            if flat_mean_ratio > 8.0 and cutoff_idx_A > 0:  # 매우 엄격
+            이렇게 flat_mean_ratio 의 기준을 좀 많이 올려보기 => 근데 그랬더니 다른 파형에서 오류 생김
+
+        => 해결방안(4) : 
+            analyze_peak_width(spectrum, threshold_ratio=0.7) 이라는 새 함수 추가
+            => 했는데 우선 이건 Noise, saw 에 최적화되어있던 알고리즘이라 그런지 square 의 정답률이 더 멀어짐 . 
+            => 다시 noise, sawtooth 최적화 알고리즘으로 돌아가자...! 
+
+"""
     
