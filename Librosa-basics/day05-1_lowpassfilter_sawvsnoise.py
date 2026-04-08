@@ -6,8 +6,13 @@ import numpy as np
 import matplotlib.pyplot as plt
 import os   #python 기본 내장모듈. Operating System . 운영체제와 상호작용하는 기능 제공
 from scipy.signal import savgol_filter 
+from scipy.signal import find_peaks #peak를 찾고 그 뒤의 급락 지점을 cutoff 로 적용하기 위함.
 
-def analyze_peak_width(spectrum, threshold_ratio = 0.7):
+
+
+
+#스퀘어 최적화 해보려다가 결국 안 쓰게 된 함수
+def analyze_peak_width(spectrum, threshold_ratio = 0.7): 
     #peak 폭 측정 
     max_val = np.max(spectrum)
     threshold = max_val * threshold_ratio
@@ -65,11 +70,53 @@ def estimate_lpf(y, sr):
     # 8. slope 계산 (A방식 준비)
     slope = np.gradient(spectrum_v) #변화율
     slope_smooth = savgol_filter(slope, window_length=21, polyorder=3)
-    cutoff_idx_A = np.argmin(slope_smooth) 
+
+
+    peaks, properties = find_peaks(spectrum_v, prominence=0.01)
+    
+    # 디버깅 
+    print(len(peaks))
+    print(f"spectrum 최댓값: {freqs_v[np.argmax(spectrum_v)]:.1f}Hz")
+    print(f"peak 위치: {freqs_v[peaks[-1]]:.1f}Hz")
+    print(f"peak 높이: {spectrum_v[peaks[-1]]:.4f}")
+    print(f"기음 높이: {spectrum_v[0]:.4f}")
+
+    if len(peaks) > 0:
+        # 가장 오른쪽(고주파) peak
+        last_peak = peaks[-1] #마지막 피크가 last peak (맨 뒤 피크 고름)
+        
+        # peak 뒤에서 급락 지점 찾기
+        search_range = min(50, len(slope_smooth) - last_peak - 1)
+        if search_range > 0:
+            cutoff_idx_A_peak = last_peak + np.argmin(slope_smooth[last_peak:last_peak+search_range])
+        else:
+            cutoff_idx_A_peak = last_peak
+    else:
+        cutoff_idx_A_peak = None
+
+    skip_start = 20 #window length 와 비슷하게 / 어짜피 그 앞에서는 savgol filter 경계효과 나타나니까 
+
+    # cutoff_idx_A = skip_start + np.argmin(slope_smooth[skip_start:]) # 스킵 한 그 이후의 인덱스에서만 최소값 구하기
         #변화율이 제일 -쪽으로 작은 값을 cutoff_idx_A로 넣음
         #변화율이 제일 큰 것! 
     actual_freq = freqs_v[8]
     # print(actual_freq) #실제 주파수 확인 
+
+    cutoff_idx_A_slope = skip_start + np.argmin(slope_smooth[skip_start:])
+
+    # 8-3. 둘 중 선택
+    if cutoff_idx_A_peak is not None:
+        cutoff_idx_A = cutoff_idx_A_peak  # peak 방식 우선
+        print(f"Using peak method: {freqs_v[cutoff_idx_A]:.1f}Hz")
+    else:
+        cutoff_idx_A = cutoff_idx_A_slope  # 없으면 기존 방식
+        print(f"Using slope method: {freqs_v[cutoff_idx_A]:.1f}Hz")
+
+    # ✅ 디버깅 추가:
+    # print(f"slope_smooth 앞부분: {slope_smooth[:20]}")
+    # print(f"slope_smooth 최솟값: {np.min(slope_smooth)}")
+    # print(f"cutoff_idx_A: {cutoff_idx_A}")
+    # print(f"slope_smooth[cutoff_idx_A]: {slope_smooth[cutoff_idx_A]}")
 
     # 9. -3dB 계산 (B방식 준비)
     cutoff_idx_B = None
@@ -87,10 +134,10 @@ def estimate_lpf(y, sr):
         #근데 만약, sawtooth 이고, resonance 가 그렇게 높지 않다면? 
         # -> 그래서 sawtooth 의 기음이 제일 높다면? 
     # print(f"peak_candidate : {peak_candidate}")
-    print(f"flat_mean : {flat_mean}")
-    print(f"flat_mean_ratio : {flat_mean_ratio}")
+    # print(f"flat_mean : {flat_mean}")
+    # print(f"flat_mean_ratio : {flat_mean_ratio}")
     # resonance는 보통 특정 범위에 몰려있음
-    print(f"cutoff_idx_A: {cutoff_idx_A}")
+    # print(f"cutoff_idx_A: {cutoff_idx_A}")
 
     # -- 새 함수 호출 ------------------------------------------------------
     peak_width = analyze_peak_width(spectrum_v, threshold_ratio = 0.7)
@@ -241,6 +288,37 @@ cutoff_idx_A가 8이라고 나와서 계산했더니 243Hz 정도로 나옴 .
             analyze_peak_width(spectrum, threshold_ratio=0.7) 이라는 새 함수 추가
             => 했는데 우선 이건 Noise, saw 에 최적화되어있던 알고리즘이라 그런지 square 의 정답률이 더 멀어짐 . 
             => 다시 noise, sawtooth 최적화 알고리즘으로 돌아가자...! 
+        
+
+"""
+
+"""    "Librosa-basics/audio_sample/saw+LPF(5000hires).wav", 
+=> 위 sawtooth 파형 resonance 못 잡고, 컷오프 한참 낮게 나오는것 확인 
+
+    => 우선 if 문에서 cutoff_idx_A = 0 이기 때문에 else 문으로 가는 것 확인
+    => cutoff_idx_A = 0 이 나오는 이유 
+    우선 slope_smooth 앞부분
+    : [-0.01230647 -0.01000998 -0.00799438 -0.00624936 -0.00476461 -0.00352981
+        -0.00253463 -0.00176877 -0.00122191 -0.00088372 -0.0007439  -0.00328727
+        -0.00479215 -0.0030079   0.00019185  0.00168616  0.00068458 -0.00164151
+        -0.00338468 -0.00321784]
+    인데 여기서 slope_smooth 최솟값: -0.012306474149227142. -> 맨 앞 index 가 제일 작게 나옴
+    => 따라서 cutoff_idx 가 0으로 나왔던 것 . 
+
+-why? 
+window_length = 21 인데 앞뒤 10개씩 필요하지만, index 0~10까지는 충분한 데이터가 없어서 경계에서 이상한 값이 나옴.
+=> savgol filter 경계효과 
+(각 지점마다 앞뒤 10개 (총 21개)를 보고 다항식으로 smoothing 하는거라서)
+    => 근데 index 0은 앞에 10개가 없음
+        => 해결방법 (1): 
+        그 앞 20개의 인덱스를 무시하고 계산하기 위해서 아래와 같이 처리
+
+        skip_start = 20 #window length 와 비슷하게
+        cutoff_idx_A = skip_start + np.argmin(slope_smooth[skip_start:])
+
+        => (2) 근데 이렇게 skip을 해도 idx_A 는 24가 나와서 실제 COF(5000Hz)와는 턱없이 멀음
+            : 60Hz ~ 5000Hz 까지 전체적으로 계속 감소하기 때문. slope 가 계속 음수여서 이러한 에러가 발생한다.
+            => 또 기음이 60Hz 이기때문에 거기서 다음 2배음 까지가 제일 많이 급락함.
 
 """
     
