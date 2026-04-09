@@ -15,6 +15,10 @@ def estimate_lpf_all_methods(y, sr):
     
     # ===== 공통 준비 =====
     D = np.abs(librosa.stft(y, n_fft=4096, hop_length=2048))
+        #n_fft = 4096. sr 전체 주파수를 4096개로 나누고
+        #hop_length = 2048. 2048 / 22050(sr) = 0.093초 (93ms - 약 0.1초마다 한번씩 분석)
+        # => Filter 분석하는거는 시간해상도가 중요하지 않으니까 hop_length크게함.
+        # ADSR 분석시에는 더 작아야 하긴 함 . ex. 512
     spectrum = np.mean(D, axis=1)
     freqs = librosa.fft_frequencies(sr=sr, n_fft=4096)
     
@@ -25,6 +29,10 @@ def estimate_lpf_all_methods(y, sr):
     
     # dB 변환
     spectrum_db = librosa.amplitude_to_db(spectrum_v, ref=np.max(spectrum_v))
+        #가장 큰 값을 가진 오디오빈의 magnitude 를 max 로 잡고 -> 20*log10(max/max) = 20*log10(1) = 0dB 로 표현. 나머지는 모두 음수 
+        #누군가의 0승은 항상 1
+    # print(f"spectrum_v : {spectrum_v}")
+    # print(f"spectrum_db : {spectrum_db}")
     
     results = {}
     
@@ -177,10 +185,18 @@ def estimate_lpf_all_methods(y, sr):
 
 # ===== 테스트 & 출력 =====
 audio_files = [
-    "saw+LPF(700).wav",
-    "noise+LPF(1000).wav",
-    "square+LPF(2000).wav",
-    # ... 추가
+    "Librosa-basics/audio_sample/saw+LPF(700).wav",
+    "Librosa-basics/audio_sample/saw+LPF(5000hires).wav",
+    "Librosa-basics/audio_sample/saw+LPF(300).wav",
+    "Librosa-basics/audio_sample/saw+LPF(nofilter).wav",
+    "Librosa-basics/audio_sample/noise+LPF(300).wav",
+    "Librosa-basics/audio_sample/noise+LPF(1000).wav",
+    "Librosa-basics/audio_sample/noise+LPF(5000hires).wav",
+    "Librosa-basics/audio_sample/noise+LPF(5000res).wav",
+    "Librosa-basics/audio_sample/square+LPF(nofilter).wav",
+    "Librosa-basics/audio_sample/square+LPF(2000).wav",      
+    "Librosa-basics/audio_sample/square+LPF(1100hires).wav", 
+    "Librosa-basics/audio_sample/square+LPF(645mires).wav", 
 ]
 
 print("=" * 80)
@@ -223,3 +239,51 @@ for path in audio_files:
     print("-" * 80)
 
 print("=" * 80)
+
+
+# 모든 파일 처리 후 통계
+def analyze_all_methods(audio_files):
+    method_errors = {
+        'slope': [],
+        '3db': [],
+        'peak': [],
+        'rolloff': [],
+        'hfc': [],
+        '2nd_derivative': []
+    }
+    
+    for path in audio_files:
+        # 실제 cutoff
+        match = re.search(r'\((\d+)', path)
+        if not match:
+            continue
+        actual = int(match.group(1))
+        
+        y, sr = librosa.load(path)
+        results, _, _ = estimate_lpf_all_methods(y, sr)
+        
+        for method, data in results.items():
+            if data.get('status') == 'success':
+                error = abs(data['cutoff'] - actual)
+                method_errors[method].append(error)
+    
+    # 통계 출력
+    print("\n" + "=" * 80)
+    print("OVERALL STATISTICS")
+    print("=" * 80)
+    
+    for method, errors in method_errors.items():
+        if len(errors) > 0:
+            mean_error = np.mean(errors)
+            std_error = np.std(errors)
+            max_error = np.max(errors)
+            success_rate = len(errors) / len(audio_files) * 100
+            
+            print(f"\n{method.upper()}:")
+            print(f"  Mean Error  : {mean_error:.1f}Hz")
+            print(f"  Std Dev     : {std_error:.1f}Hz")
+            print(f"  Max Error   : {max_error:.1f}Hz")
+            print(f"  Success Rate: {success_rate:.1f}%")
+
+# 사용:
+# analyze_all_methods(audio_files)
