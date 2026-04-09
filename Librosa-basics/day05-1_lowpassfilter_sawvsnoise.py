@@ -73,26 +73,36 @@ def estimate_lpf(y, sr):
 
 
     peaks, properties = find_peaks(spectrum_v, prominence=0.01)
+        # prominence에 대한 기준이 없으면, 그냥 노이즈도 peak 로 인식함. (작은 요철도 인식해버려서)
+        # prominence = 0.01 은 주변보다 최소 0.01 이상 높은 peak 만 
     
     # 디버깅 
-    print(len(peaks))
-    print(f"spectrum 최댓값: {freqs_v[np.argmax(spectrum_v)]:.1f}Hz")
-    print(f"peak 위치: {freqs_v[peaks[-1]]:.1f}Hz")
-    print(f"peak 높이: {spectrum_v[peaks[-1]]:.4f}")
-    print(f"기음 높이: {spectrum_v[0]:.4f}")
+    # print(len(peaks))
+    # print(f"spectrum 최댓값: {freqs_v[np.argmax(spectrum_v)]:.1f}Hz")
+    # print(f"peak 위치: {freqs_v[peaks[-1]]:.1f}Hz")
+    # print(f"peak 높이: {spectrum_v[peaks[-1]]:.4f}")
+    # print(f"기음 높이: {spectrum_v[0]:.4f}")
 
     if len(peaks) > 0:
         # 가장 오른쪽(고주파) peak
         last_peak = peaks[-1] #마지막 피크가 last peak (맨 뒤 피크 고름)
         
         # peak 뒤에서 급락 지점 찾기
-        search_range = min(50, len(slope_smooth) - last_peak - 1)
+        search_range = min(50, len(slope_smooth) - last_peak - 1)   
+            #last peak뒤에서 50개 구간을 탐색하고 싶은데 배열 끝을 넘어갈수 있기 때문에
+            #전체 index에서 last_peak의 인덱스를 빼고 -1 함. 인덱스 기준으로는 인덱스 오버플로우 방지하기 위해서 -1함
+            #근데 search_range 가 0 나오게 되면 else 로 감
         if search_range > 0:
             cutoff_idx_A_peak = last_peak + np.argmin(slope_smooth[last_peak:last_peak+search_range])
+                #그리고 그 last_peak 의 뒤 50안에서 제일 변화율이 큰 (-쪽이니까 argmin 으로 처리) 애의 인덱스를 더하면 cutoff idx 나옴
+                #slope_smooth =     [10, 20, 30, 40] 이였어도 위에서 [last_peak:last_peak+..] 이렇게 처리하면
+                #새로운 배열이 만들어져서   0   1   2   3  => 이런식의 새로운 인덱스 만들어짐! 
         else:
             cutoff_idx_A_peak = last_peak
     else:
         cutoff_idx_A_peak = None
+    
+    print(f"cutoff_idx: {cutoff_idx_A_peak}") # 얘가 982 이렇게 나오므로, 
 
     skip_start = 20 #window length 와 비슷하게 / 어짜피 그 앞에서는 savgol filter 경계효과 나타나니까 
 
@@ -158,7 +168,7 @@ def estimate_lpf(y, sr):
             peak_idx = search_start + np.argmax(spectrum_v[search_start:search_end]) # cut off freq 지점은 떨어지는 시작점이기때문에 peak 찾는 범위 안에 포함되지 않아도 됨
                 # 상대적인 인덱스가 나오는 걸 방지 
                 # 그냥 peak_idx = np.argmax(spectrum_v[20:50])을 하게되면 원본 배열의 위치가 아님(그냥 0 ~ 29 사이의 값 반환함 . 슬라이스 내 상대 인덱스)
-            print(freqs_v[peak_idx]) #얘 때문에 cutoff freq 가 그냥 peak 값으로 찍힘
+            # print(freqs_v[peak_idx]) #얘 때문에 cutoff freq 가 그냥 peak 값으로 찍힘
             cutoff_freq = freqs_v[peak_idx]
         else:   #검색할 범위가 없다면 (빈 배열) -> peak를 못찾겠으니 그냥 cutoff 지점을 사용 
             cutoff_freq = freqs_v[cutoff_idx_A]
@@ -190,21 +200,21 @@ def estimate_lpf(y, sr):
 
 # 테스트할 오디오 파일 목록 (한번에 테스트 되게 하기)
 audio_files = [
-    # "Librosa-basics/audio_sample/saw+LPF(700).wav",
+    "Librosa-basics/audio_sample/saw+LPF(700).wav",
     "Librosa-basics/audio_sample/saw+LPF(5000hires).wav",
-    # "Librosa-basics/audio_sample/saw+LPF(300).wav",
-    # "Librosa-basics/audio_sample/saw+LPF(nofilter).wav",
-    # "Librosa-basics/audio_sample/noise+LPF(300).wav",
-    # "Librosa-basics/audio_sample/noise+LPF(1000).wav",
-    # "Librosa-basics/audio_sample/noise+LPF(5000hires).wav",
-    # "Librosa-basics/audio_sample/noise+LPF(5000res).wav",
-    # "Librosa-basics/audio_sample/square+LPF(nofilter).wav",
-    # "Librosa-basics/audio_sample/square+LPF(2000).wav",      
+    "Librosa-basics/audio_sample/saw+LPF(300).wav",
+    "Librosa-basics/audio_sample/saw+LPF(nofilter).wav",
+    "Librosa-basics/audio_sample/noise+LPF(300).wav",
+    "Librosa-basics/audio_sample/noise+LPF(1000).wav",
+    "Librosa-basics/audio_sample/noise+LPF(5000hires).wav",
+    "Librosa-basics/audio_sample/noise+LPF(5000res).wav",
+    "Librosa-basics/audio_sample/square+LPF(nofilter).wav",
+    "Librosa-basics/audio_sample/square+LPF(2000).wav",      
         #fundamental = 220 이라서 그런지 자꾸 COF 가 221로 나옴.
         #아마 peak_idx 때문일 확률 높음
 
-    # "Librosa-basics/audio_sample/square+LPF(1100hires).wav", 
-    # "Librosa-basics/audio_sample/square+LPF(645mires).wav",  #fundamental > resonance Hz  
+    "Librosa-basics/audio_sample/square+LPF(1100hires).wav", 
+    "Librosa-basics/audio_sample/square+LPF(645mires).wav",  #fundamental > resonance Hz  
 ]
 
 print("=" * 50)

@@ -546,7 +546,7 @@ high_mean / overall_mean  = 0.6 ~ 0.9 -> 0.5 이상 -> LPF 없다고 판단
 
 """
 git add .
-git commit -m "test : add square wave"
+git commit -m "test : 제일 높은 주파수 부터의 Peak detecting 방식으로 코드 수정해봄. but, 원래의 방식이 더 차이가 적다"
 git push origin main
 
 wip : work in progress. 아직 작업중(미완인 프로젝트 올릴때 쓰는 커밋 컨벤션(관습))
