@@ -186,7 +186,7 @@ def estimate_lpf(y, sr):
     region = spectrum_v[region_start:region_end]
     peak = np.max(region) #region 내에서의 최고값 
     base = flat_mean #평평한 곳의 평균값 
-    resonance_ratio = peak / (base + 1e-8) #
+    resonance_ratio = peak / (base + 1e-8) 
 
     if resonance_ratio > 1.5:
         resonance_label = "High Resonance"
