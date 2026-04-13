@@ -87,8 +87,8 @@ def extract_adsr(y, sr, hop=512):
     #     print(f"        → Decay 못 찾을 거예요")
         #현재 threshold 는 0.000392인데 모든 기울기가 그것보다 다 큼 (0.000555가 최소값임)
 
-    # (Decay 찾기!) 1단계 : 기울기로 찾기
 
+    # (Decay 찾기!) 1단계 : 기울기로 찾기
     decay_found = False 
         #decay 찾았는지 여부, 1-2-3단계에 거쳐서 찾게 되는데, 각 단계의 시작단계에서 decay_found = True 가 되어있으면 이미 찾은것이므로 종료하게 됨
 
@@ -100,7 +100,7 @@ def extract_adsr(y, sr, hop=512):
                 # 4.6초 이상이기 때문에 Decay 값 비현실적 => 너무 긴 구간은 검색 안해도 되니까 경험적 상한선으로 200으로 정해둠
 
         #최근 10프레임 기울기 
-        recent_slope = after_peak[i] - after_peak[i-10]
+        recent_slope = after_peak[i] - after_peak[i-5]
             # 피크 이후의 10번째 인덱스의 rms - 피크의 인덱스 시작이 10이므로 -10 하면 그냥 after_peak[0] 이여서 피크 자기자신의 RMS값
             # 그럼 우선 피크 바로 직후에는 after_peak[i] 가 더 작을테니 음수가 나옴 -> 그래서 절대값 abs . 근데 점점 위 인덱스로 갈수록 
             # after_peak[i]와 after_peak[i-10]이 별로 레벨 차이가 안나게 되면서 0에 가까운 수치가 된다. 
@@ -112,12 +112,14 @@ def extract_adsr(y, sr, hop=512):
                 # => rms_peak_val * 0.01 => Peak 의 1% : 절대 기울기가 아니라 상대 기울기
                 # 피크가 크면 같은 1%의 변화도 큰 값이 됨. (peak 크기에 비례하는 임계값으로 구하려고)
             decay_end = rms_peak_idx + i # 암튼 그렇게 별차이 안나는 그 지점을 decay가 끝나는 지점으로 확인
+            decay_found = True
             break
             # 만약 decay 를 못찾으면 그냥 decay_end = peak 값을 그대로 유지함
             # 근데 지금은 아마도 계속 그 값이 true가 되는 순간이 안오기 때문에 break 가 안되는듯!! 그래서 decay_end 가 처음의 그 peak값을 유지함
             # 위의 우선 모든 기울기를 계산해서 전체의 기울기가 rms_peak_val * 0.01 보다 작아지는 순간이 오는지 확인 
 
-        
+    # print(decay_found) #지금 False 가 출력이 되므로 
+
     # (Decay 찾기) 2단계 : 못찾았으면 레벨로 찾기 
 
     if not decay_found:
@@ -145,7 +147,7 @@ def extract_adsr(y, sr, hop=512):
             break
 
         # rms 인덱스의 전체 개수부터, peak 값 까지 뒤에서 부터 순서대로 구하면서 
-    print(f"\nthreshold : {threshold}")
+    # print(f"\nthreshold : {threshold}")
 
     # 만약 release 를 못 찾았으면 (모두 threshold 이하라면) (그럴 수 있나?)
     if release_start == len(rms) - 1:
@@ -196,8 +198,8 @@ def extract_adsr(y, sr, hop=512):
         # 그래서 sustain_end 를 release_start지점을 먼저 찾고 -5 한 프레임으로 지정
 
     # 아래의 main(a, b)
-    print(f"sustain_start: {sustain_start}") #346
-    print(f"sustain_end: {sustain_end}") #370 이라는 수가 나와서 우선 지금은 아래에서 sustain_sample_end 는 370이 나옴
+    # print(f"sustain_start: {sustain_start}") #346
+    # print(f"sustain_end: {sustain_end}") #370 이라는 수가 나와서 우선 지금은 아래에서 sustain_sample_end 는 370이 나옴
 
     if sustain_end > sustain_start and (sustain_end - sustain_start) >= 10:
         sustain_sample_end = min(sustain_start + 50, sustain_end)
@@ -240,7 +242,7 @@ def extract_adsr(y, sr, hop=512):
     else:
         sustain_db = -np.inf #또는 None 으로 처리
 
-    print(f"sustain_db : {sustain_db}")
+    # print(f"sustain_db : {sustain_db}")
 
 
     # 8. Release 시작점 찾기
@@ -371,7 +373,7 @@ def main():
     results = []
 
     # 각 파일 처리
-    for path in audio_files[:2]: #첫번째만 시험해보려 할때는 audio_files[:1] 붙이기
+    for path in audio_files[:-1]: #첫번째만 시험해보려 할때는 audio_files[:1] 붙이기
         filename = os.path.basename(path)
         name_only = os.path.splitext(filename)[0]
 
@@ -380,7 +382,30 @@ def main():
         try:
             # 오디오 로드
             # sr=None: 원본 샘플레이트 유지
-            y, sr = librosa.load(path, sr=None)
+            y_raw, sr = librosa.load(path, mono=False, sr=None) #입력 신호를 모노로 받기 때문에 레벨에 문제가 생겼어서, 스테레오 받은 후 l ,r 비교해서 많이 같으면 l 만 쓰기로! 
+
+            if y_raw.ndim == 1:
+                # 입력소스가 mono라면 -> 그대로 
+                y = y_raw
+
+            else:
+                # Stereo 
+                left = y_raw[0]
+                right = y_raw[1]
+
+                # 상관계수
+                correlation = np.corrcoef(left, right)[0, 1]
+
+                if correlation > 0.99:
+                    #거의 같음 
+                    print(" ℹ️ Stere이지만 L/R 동일 (Left 사용)")
+                    y = left
+                
+                else:
+                    # L, R 거의 다름 -> 에너지 합산
+                    print(" ℹ️ Stereo 다름 (에너지 합산)")
+                    y = np.sqrt(left**2 + right**2) # return 대신 y에 이거 들여보냄
+
 
             print(f"    샘플레이트 : {sr} Hz")
             print(f"    길이 : {len(y)} samples ({len(y)/sr:.2f}초)")
@@ -488,3 +513,13 @@ decay end = min (decay_end + 5, len(rms)) => 둘 중 작은것을 골라야 함 
 
 """
 
+"""ADSR 만든 사운드가 다르게 나오고 있는 걸 발견했다...
+=> 근데 이거 logic 내에서 mono로 변환하니까 소리가 마지막 이 좀 더 커진다던지, 하는 그런 오류가 생김.
+ so, stereo 그대로 받아와서 왼쪽만 쓰거나, 오른쪽만 써야함
+    + 근데 알고리즘들이 기본적으로 1차원 배열만 처리하기 때문에 ! mono 로 처리를 해줘야함 
+
+    => 따라서 mono로 각각 left 만 처리하거나, right 만 처리해서 합칠 수 도 있고
+    => 지금은, 왼쪽만 사용하도록 처리를 하는 방법을 택하자 (right 정보는 버림)
+
+    but, 피아노 같은 악기의 경우, 왼쪽은 low, 오른쪽은 high 이렇게 음역이 나뉘어져 있기때문에 문제가 생길 수 있음! 
+"""
