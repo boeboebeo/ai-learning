@@ -1,4 +1,5 @@
 #day 06-1 ADSR extraction
+    #노트가 파일의 중간에 끝나는 (release 지점 고려) ADSR에 한함 => 노트의 On/Off 지점을 알 수 없기때문에 우선 그렇게 지정함
 
     #ADSR 추출 코드 완전 정리! 🎵 이거 검색해서 참조
 
@@ -135,16 +136,87 @@ def extract_adsr(y, sr, hop=512):
         print(f"⚠️ Decay : 끝까지 감소 (Release 후 재계산)")
 
 
+    print(f"\n=== Release 찾기 디버깅 ===")
+    print(f"Peak 값: {rms_peak_val:.6f}")
+    print(f"Threshold: {threshold:.6f}")
+    print(f"검색 범위: {len(rms)-1} → {decay_end + 20}")
+
+
+    print(f"\n뒤에서부터 기울기 분석:")
+
+    for i in range(len(rms)-1, max(len(rms)-20, decay_end + 20), -1):
+        if i >= 10:
+            slope = rms[i] - rms[i-10]
+            
+            print(f"  i={i}: RMS={rms[i]:.6f}, "
+                f"기울기={slope:+.6f}, "
+                f"레벨 OK={rms[i] > threshold * 3}, "
+                f"기울기 OK={-rms_peak_val * 0.01 < slope < 0}")
+
 
     # (개선) 4-2. release 시작 먼저 찾기 
     release_start = len(rms) - 1 
         # 우선 release_start값을 마지막 인덱스 값으로 두면서, 밑의 조건에 맞는 값으로 release start 지점을 바꿈
         # 전체 오디오파일 끝날때까지 노트가 안끝날수도 있으니까
 
-    for i in range(len(rms)-1, decay_end, -1): # 뒤에서 부터 셈
-        if rms[i] > threshold: #여기서 threshold 는 전체 피크의 0.01되는 지점
-            release_start = i  #각 인덱스의 레벨이 threshold 보다 커지는 순간, release start 는 i index가 되고, for문은 중단됨
-            break
+
+    # (기존) 아래와 같이 release를 구했더니 다 레벨이 떨어지고 난 뒤에야 release 를 잡아버림 그래서 아래에서 개선함
+    # for i in range(len(rms)-1, decay_end, -1): # 뒤에서 부터 셈 (역순분석). 375 -> 50. decay_end 는 포함 안됨
+    #     if rms[i] > threshold: #여기서 threshold 는 전체 피크의 0.01되는 지점
+    #         release_start = i  #각 인덱스의 레벨이 threshold 보다 커지는 순간, release start 는 i index가 되고, for문은 중단됨
+    #         break
+
+    # ✅ 조건 만족하는 지점들 저장
+    candidate_points = []  # 후보 지점들
+
+
+    # (개선) release start 지점을 기울기가 음수로 바뀌는 지점으로 변경
+    for i in range(len(rms)-1, decay_end + 20, -1):
+        if i >= 10:
+            #현재 기울기
+            slope = rms[i] - rms[i-10] 
+                #뒤에서부터 역순으로 처리하는거니까 뒤의 rms[i-10]이 더 작은 수긴함
+                #그러면 뒤에서 부터 쭉 처리했을때 비슷하면 거의 0 에 비슷한 레벨이 나오고, 
+                #먼가 레벨이 올라가기 시작하면 -값으로 더 커짐 
+                # => 근데 그 레벨이 다시 0이 되는 지점을 찾아야 그곳이 릴리즈 시작지점 
+
+            if rms[i] > threshold * 3 and -0.005 < slope < 0:
+                #rms[i]가 threshold 에 * 3 한것보다는 크고, -0.005의 슬로프 보다는 큰 slope 을 가진 0보다 작은 slope (그럼 이제 막 떨어지는 순간임)
+                # 그부분으로 설정하니까 결국, 어느정도 decay 길고, sustain 있는 애들은 그 release start 지점을 찾음
+                release_start = i
+                # ✅ 조건 만족!
+                candidate_points.append({
+                    'index': i,
+                    'rms_level': rms[i],
+                    'slope': slope
+                })
+                print(f"\n✅ Release 찾음: {release_start}")
+                print(f"   레벨: {rms[i]:.6f}")
+                print(f"   기울기: {slope:.6f}")
+                print(f"   시간: {times[i]:.3f}s")
+                break
+
+
+            #이전 기울기
+            # slope_prev = rms[i-10] - rms[i-20]
+
+            #평평 -> 감소로 바뀌는 지점
+            # if abs(slope_prev) < rms_peak_val * 0.01 and slope_now < -rms_peak_val * 0.005:
+            #     release_start = i
+            #     print(f"   [Release] 변곡점 방식 : 인덱스 {release_start}")
+            #     break
+
+    # Fallback
+    # if release_start == len(rms) - 1:
+    #     # 못 찾았으면 Local peak 방식
+    #     after_decay = rms[decay_end + 10:]
+    #     if len(after_decay) > 10:
+    #         local_peak = np.argmax(after_decay)
+    #         release_start = decay_end + 10 + local_peak
+    #         print(f"  [Release] Fallback (Local peak): 인덱스 {release_start}")
+    #     else:
+    #         release_start = min(decay_end + 10, len(rms) - 1)
+
 
         # rms 인덱스의 전체 개수부터, peak 값 까지 뒤에서 부터 순서대로 구하면서 
     # print(f"\nthreshold : {threshold}")
@@ -153,6 +225,7 @@ def extract_adsr(y, sr, hop=512):
     if release_start == len(rms) - 1:
         #전체가 threshold 이하 -> release 없음
         release_start = min(decay_end + 10, len(rms) -1 )
+        print(f"   [Release] 노트길이가 음원길이보다 더 길어서 릴리즈 없음 : 인덱스 {release_start}")
 
 
     # 5. sustain 레벨 찾기 (개선)
@@ -290,7 +363,10 @@ def extract_adsr(y, sr, hop=512):
         'peak_idx' : rms_peak_idx,
         'decay_end' : decay_end,
         'sustain_start' : sustain_start,
-        'release_start' : release_start
+        'release_start' : release_start,
+        'threshold' : threshold,
+        'rms_peak_val' : rms_peak_val,
+        'release_candidates': candidate_points,  # ✅ 추가
 
     }
 
@@ -307,6 +383,7 @@ def plot_adsr_analysis(y, sr, adsr, hpss, filename, save=False):
     hop = 512
     rms = librosa.feature.rms(y=y, hop_length=hop)[0]
     times = librosa.times_like(rms, sr=sr, hop_length=hop)
+    threshold = np.max(rms) * 0.01
 
     axes[0].plot(times, rms, color='#333333', linewidth=1)
 
@@ -317,6 +394,7 @@ def plot_adsr_analysis(y, sr, adsr, hpss, filename, save=False):
     #Decay 끝 표시
     axes[0].axvline(times[adsr['decay_end']], color='g',
                     linestyle='--', alpha=0.7, label='Decay end')
+                    
     
     #Sustain 시작 표시
     if adsr['sustain_start']<len(times):
@@ -327,8 +405,66 @@ def plot_adsr_analysis(y, sr, adsr, hpss, filename, save=False):
     if adsr['release_start']<len(times):
         axes[0].axvline(times[adsr['release_start']], color='purple',
                         linestyle='--', alpha=0.7, label='Release start')
+        
+
+    # ✅ Release 후보들 (점 + 선분 + 텍스트)
+    if adsr['release_candidates']:
+        for candidate in adsr['release_candidates']:
+            idx = candidate['index']
+            slope = candidate['slope']
+            
+            
+            # 기울기 선분
+            if idx >= 10:
+                axes[0].plot([times[idx-10], times[idx]], 
+                            [rms[idx-10], rms[idx]], 
+                            'r-', linewidth=2.5, alpha=0.7, zorder=2)
+            
+            # 기울기 값
+            axes[0].text(times[idx] + 0.2, rms[idx]*0.9, 
+                        f"{slope:.4f}",
+                        fontsize=8, ha='center', color='red',
+                        fontweight='bold',
+                        bbox=dict(boxstyle='round', 
+                                facecolor='white', alpha=0.7))
+        
+        # # 범례
+        # axes[0].plot([], [], 'D', color='yellow', 
+        #             markeredgecolor='orange', markeredgewidth=2,
+        #             markersize=10, alpha=0.8,
+        #             label=f"후보 ({len(adsr['release_candidates'])}개)")
+
+    #
+    if 'release_candidates' in adsr and adsr['release_candidates']:
+        for candidate in adsr['release_candidates']:
+            idx = candidate['index']
+            axes[0].plot(times[idx], rms[idx], 'r*',  # 빨간 점
+                        color = 'red', markersize=8, alpha=0.6)
+            
+            
+        
+        # 범례에 한 번만 추가
+        axes[0].plot([], [], 'r*', markersize=8, alpha=0.6, color= 'red',
+                    label=f"Release 후보 ({len(adsr['release_candidates'])}개)")
+
+
+
+    # ✅ threshold × 3 수평선
+    axes[0].axhline(y=adsr['threshold'] * 3, 
+                    color='red', 
+                    linestyle='--', 
+                    linewidth=2, 
+                    alpha=0.8,
+                    label='threshold × 3')
     
-    
+    # ✅ Peak 수평선
+    axes[0].axhline(y=adsr['rms_peak_val'], 
+                    color='green', 
+                    linestyle='-.', 
+                    linewidth=2, 
+                    alpha=0.7,
+                    label='Peak')
+        
 
     axes[0].set_title(f"ADSR Envelope - {filename}")
     axes[0].set_ylabel("RMS energy")
@@ -363,6 +499,8 @@ def main():
         print(f"'{AUDIO_FOLDER}'에 .wav 파일이 없습니다.")
         print(f"현재 위치 : {os.getcwd()}")
         return 
+    
+    
 
     print("=" * 80)
     print(f"📁 폴더: {AUDIO_FOLDER}")
@@ -373,7 +511,7 @@ def main():
     results = []
 
     # 각 파일 처리
-    for path in audio_files[:-1]: #첫번째만 시험해보려 할때는 audio_files[:1] 붙이기
+    for path in audio_files: #첫번째만 시험해보려 할때는 audio_files[:1] 붙이기
         filename = os.path.basename(path)
         name_only = os.path.splitext(filename)[0]
 

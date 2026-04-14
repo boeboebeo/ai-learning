@@ -546,7 +546,7 @@ high_mean / overall_mean  = 0.6 ~ 0.9 -> 0.5 이상 -> LPF 없다고 판단
 
 """
 git add .
-git commit -m "feat: ADSR 추출 개선 - Sustain 구간/레벨 계산 수정, Decay 다단계 fallback, 버그 수정"
+git commit -m "fix: release start 지점을 레벨이 다 감소된 지점으로 잡아서 감소되기 시작하는 타이밍으로 고침. 뒤에서부터 index 훑으면서, 기울기가 -0.005<slope<0 인 지점 찾음"
 git push origin main
 
 wip : work in progress. 아직 작업중(미완인 프로젝트 올릴때 쓰는 커밋 컨벤션(관습))
