@@ -408,7 +408,7 @@ def plot_adsr_analysis(y, sr, adsr, hpss, filename, save=False):
         
 
     # ✅ Release 후보들 (점 + 선분 + 텍스트)
-    if adsr['release_candidates']:
+    if adsr['release_candidates']: #main() 에서 호출하고 있는 adsr 이라는 함수에서 딕셔너리 꺼낸것. 
         for candidate in adsr['release_candidates']:
             idx = candidate['index']
             slope = candidate['slope']
@@ -434,12 +434,6 @@ def plot_adsr_analysis(y, sr, adsr, hpss, filename, save=False):
         #             markersize=10, alpha=0.8,
         #             label=f"후보 ({len(adsr['release_candidates'])}개)")
 
-    #
-    if 'release_candidates' in adsr and adsr['release_candidates']:
-        for candidate in adsr['release_candidates']:
-            idx = candidate['index']
-            axes[0].plot(times[idx], rms[idx], 'r*',  # 빨간 점
-                        color = 'red', markersize=8, alpha=0.6)
             
             
         
@@ -511,7 +505,7 @@ def main():
     results = []
 
     # 각 파일 처리
-    for path in audio_files: #첫번째만 시험해보려 할때는 audio_files[:1] 붙이기
+    for path in audio_files[1:]: #첫번째만 시험해보려 할때는 audio_files[:1] 붙이기
         filename = os.path.basename(path)
         name_only = os.path.splitext(filename)[0]
 
@@ -550,6 +544,7 @@ def main():
 
             # ADSR 추출
             adsr = extract_adsr(y, sr, hop=512)
+                #여기서 adsr 이라는 이름으로 저 함수를 호출하고 있음
 
             print(f"\n ======== ADSR ========")
             print(f"    RMS_Attack  : {adsr['attacks_ms']:6.1f}ms")
