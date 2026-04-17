@@ -547,7 +547,7 @@ high_mean / overall_mean  = 0.6 ~ 0.9 -> 0.5 이상 -> LPF 없다고 판단
 """
 
 git add .
-git commit -m "build : modulation analyzer code making"
+git commit -m "docs : AM, RM, FM 비교 코드, FFT 이해"
 git push origin main
 
 wip : work in progress. 아직 작업중(미완인 프로젝트 올릴때 쓰는 커밋 컨벤션(관습))
