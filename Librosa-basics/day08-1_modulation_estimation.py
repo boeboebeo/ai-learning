@@ -87,7 +87,7 @@ def detect_modulation(y, sr, hop=256):
         print(f"    ❌Tremolo 미감지 (신호 짧음)")
 
 
-    #------Vibrato detection------
+#(1)------Vibrato detection------
     print(f"\n  [Vibrato Analyze]")
 
     #spectral Centroid 의 주기적 변화
@@ -127,6 +127,118 @@ def detect_modulation(y, sr, hop=256):
         vibrato_rate = 0.0
         vibrato_strength = 0.0
         print(f"    ❌ Vibrato 미감지 (신호 짧음)")
+
+#(2)------Vibrato detection------
+    # print(f"\n  [Vibrato Analyze]")
+
+    # # Spectral Centroid 의 주기적 변화
+    # centroid_normalized = (centroid - np.mean(centroid)) / (np.std(centroid) + 1e-8)  # 괄호 수정!
+
+    # # FFT 로 변조 주파수 찾기
+    # centroid_fft = np.fft.rfft(centroid_normalized)
+    # centroid_freqs = np.fft.rfftfreq(len(centroid), d=(hop/sr))
+    # centroid_power = np.abs(centroid_fft)
+
+    # # DC 제외하고 가장 강한 주파수
+    # if len(centroid_power) > 1:
+    #     # 4Hz 이상에서만 탐색 (서브하모닉 제거)
+    #     min_vibrato_hz = 4.0
+    #     min_idx = max(1, np.searchsorted(centroid_freqs, min_vibrato_hz))
+        
+    #     # 상위 3개 피크 찾기
+    #     search_range = min(50, len(centroid_power))
+    #     top_3_indices = np.argsort(centroid_power[min_idx:search_range])[-3:] + min_idx
+    #     top_3_freqs = centroid_freqs[top_3_indices]
+    #     top_3_powers = centroid_power[top_3_indices]
+        
+    #     # 가장 강한 피크 선택
+    #     strongest_idx = top_3_indices[np.argmax(top_3_powers)]
+    #     vibrato_rate = centroid_freqs[strongest_idx]
+        
+    #     # 강도 계산 (4~12Hz 범위에서)
+    #     vibrato_range_end = min(search_range, np.searchsorted(centroid_freqs, 12.0))
+    #     vibrato_strength = centroid_power[strongest_idx] / np.sum(centroid_power[min_idx:vibrato_range_end])
+        
+    #     # 디버깅 출력
+    #     print(f"    [디버깅] 상위 피크:")
+    #     for idx in reversed(top_3_indices):
+    #         print(f"      {centroid_freqs[idx]:.2f}Hz: {centroid_power[idx]:.1f}")
+        
+    #     # Vibrato 판정 (변조속도 4~10Hz, 강도 0.2 이상)
+    #     if 4 < vibrato_rate < 10 and vibrato_strength > 0.2:
+    #         vibrato_detected = True
+    #         print(f"    ✅ Vibrato 감지: {vibrato_rate:.2f} Hz (강도: {vibrato_strength:.2f})")
+    #     else:
+    #         vibrato_detected = False
+    #         print(f"    ❌ Vibrato 미감지 (rate={vibrato_rate:.2f}Hz, strength={vibrato_strength:.2f})")
+
+    # else:
+    #     vibrato_detected = False
+    #     vibrato_rate = 0.0
+    #     vibrato_strength = 0.0
+    #     print(f"    ❌ Vibrato 미감지 (신호 짧음)")
+
+
+
+#(3)Vibrato detection 부분 수정
+    #------Vibrato detection------
+    # print(f"\n  [Vibrato Analyze]")
+
+    # # F0 (Pitch) 추출 사용 (Centroid 대신)
+    # try:
+    #     f0 = librosa.yin(y, fmin=80, fmax=800, sr=sr, hop_length=hop)
+        
+    #     # F0가 0인 부분 제거 (무음 구간)
+    #     f0_valid = f0[f0 > 0]
+        
+    #     if len(f0_valid) > 20:  # 충분한 데이터가 있을 때
+    #         # F0 정규화
+    #         f0_normalized = (f0_valid - np.mean(f0_valid)) / (np.std(f0_valid) + 1e-8)
+            
+    #         # FFT
+    #         f0_fft = np.fft.rfft(f0_normalized)
+    #         f0_freqs = np.fft.rfftfreq(len(f0_valid), d=(hop/sr))
+    #         f0_power = np.abs(f0_fft)
+            
+    #         # 4Hz 이상에서 피크 찾기 (Vibrato는 보통 4Hz 이상)
+    #         min_idx = max(1, np.searchsorted(f0_freqs, 4.0))
+    #         max_idx = min(len(f0_power), np.searchsorted(f0_freqs, 15.0))
+            
+    #         if max_idx > min_idx:
+    #             peak_idx = np.argmax(f0_power[min_idx:max_idx]) + min_idx
+    #             vibrato_rate = f0_freqs[peak_idx]
+    #             vibrato_strength = f0_power[peak_idx] / np.sum(f0_power[min_idx:max_idx])
+                
+    #             # Vibrato 판정 (변조속도 4~12Hz, 강도 0.15 이상)
+    #             if 4 < vibrato_rate < 12 and vibrato_strength > 0.15:
+    #                 vibrato_detected = True
+    #                 print(f"    ✅ Vibrato 감지: {vibrato_rate:.2f} Hz (강도: {vibrato_strength:.2f})")
+    #             else:
+    #                 vibrato_detected = False
+    #                 print(f"    ❌ Vibrato 미감지 (rate={vibrato_rate:.2f}Hz, strength={vibrato_strength:.2f})")
+    #         else:
+    #             vibrato_detected = False
+    #             vibrato_rate = 0.0
+    #             vibrato_strength = 0.0
+    #             f0_fft = np.array([0])
+    #             f0_freqs = np.array([0])
+    #             print(f"    ❌ Vibrato 미감지 (주파수 범위 부족)")
+    #     else:
+    #         vibrato_detected = False
+    #         vibrato_rate = 0.0
+    #         vibrato_strength = 0.0
+    #         f0_fft = np.array([0])
+    #         f0_freqs = np.array([0])
+    #         print(f"    ❌ Vibrato 미감지 (유효 F0 부족)")
+
+    # except Exception as e:
+    #     print(f"    ❌ Vibrato 분석 실패: {e}")
+    #     vibrato_detected = False
+    #     vibrato_rate = 0.0
+    #     vibrato_strength = 0.0
+    #     f0_fft = np.array([0])
+    #     f0_freqs = np.array([0])
+
 
 
     # ── 일반 AM/FM 감지 ──
@@ -185,6 +297,8 @@ def detect_modulation(y, sr, hop=256):
     'rms_freqs': rms_freqs,
     'centroid_fft': np.abs(centroid_fft),
     'centroid_freqs': centroid_freqs
+    # 'centroid_fft' : np.abs(f0_fft),
+    # 'centroid_freqs' : f0_freqs,
 
     }
 
@@ -300,7 +414,7 @@ def main():
     print(f"📊 발견된 파일: {len(audio_files)}개")
     print("=" * 80)
     
-    for path in audio_files[7:8]:
+    for path in audio_files:
         filename = os.path.basename(path)
         
         print(f"\n{'─'*60}")
