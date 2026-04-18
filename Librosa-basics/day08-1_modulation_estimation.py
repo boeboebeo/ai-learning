@@ -186,7 +186,7 @@ def detect_modulation(y, sr, hop=256):
 
     # # F0 (Pitch) 추출 사용 (Centroid 대신)
     # try:
-    #     f0 = librosa.yin(y, fmin=80, fmax=800, sr=sr, hop_length=hop)
+        f0 = librosa.yin(y, fmin=80, fmax=800, sr=sr, hop_length=hop)
         
     #     # F0가 0인 부분 제거 (무음 구간)
     #     f0_valid = f0[f0 > 0]
@@ -241,33 +241,85 @@ def detect_modulation(y, sr, hop=256):
 
 
 
-    # ── 일반 AM/FM 감지 ──
-    print(f"\n  [Modulation Analyze]")
+# ── 일반 AM/FM 감지 ──
+    # print(f"\n  [Modulation Analyze]")
     
-    # AM (진폭 변조)
-    rms_variation = np.std(np.diff(rms))
-        #np.diff() : 차분방정식 / np.std( ) : 표준편차
-        #np.diff() : rms[t+1] - rms[t] : 볼륨이 얼마나 빠르게 변화하는지
-        #np.std() : 변화량의 흔들림 정도 
-            # AM 없으면 diff 거의 0. volume : ---------- 이렇게 신호가 유지됨 
+    # # AM (진폭 변조)
+    # rms_variation = np.std(np.diff(rms))
+    #     #np.diff() : 차분방정식 / np.std( ) : 표준편차
+    #     #np.diff() : rms[t+1] - rms[t] : 볼륨이 얼마나 빠르게 변화하는지
+    #     #np.std() : 변화량의 흔들림 정도 
+    #         # AM 없으면 diff 거의 0. volume : ---------- 이렇게 신호가 유지됨 
 
-    if rms_variation > 0.01: #std(diff) 가 작다면 거의 레벨이 일정하다는 뜻
-        am_detected = True
-        print(f"    ✅ AM 감지: 변화량 {rms_variation:.4f}")
-    else:
-        am_detected = False
-        print(f"    ❌ AM 미감지")
+    # if rms_variation > 0.01: #std(diff) 가 작다면 거의 레벨이 일정하다는 뜻
+    #     am_detected = True
+    #     print(f"    ✅ AM 감지: 변화량 {rms_variation:.4f}")
+    # else:
+    #     am_detected = False
+    #     print(f"    ❌ AM 미감지")
     
-    # FM (주파수 변조)
-    centroid_variation = np.std(np.diff(centroid))
-        #centroid(소리의 무게중심을 구해서) -> diff 후 -> std 처리
-        # FM 없으면 centroid 거의 0.centorid : ---------- 
-    if centroid_variation > 100: # 주파수의 무게중심이 자주 바뀐다면은 fm 존재하는것 
-        fm_detected = True
-        print(f"    ✅ FM 감지: 변화량 {centroid_variation:.1f} Hz")
-    else:
-        fm_detected = False
-        print(f"    ❌ FM 미감지")  
+    # # FM (주파수 변조)
+    # centroid_variation = np.std(np.diff(centroid))
+    #     #centroid(소리의 무게중심을 구해서) -> diff 후 -> std 처리
+    #     # FM 없으면 centroid 거의 0.centorid : ---------- 
+    # if centroid_variation > 100: # 주파수의 무게중심이 자주 바뀐다면은 fm 존재하는것 
+    #     fm_detected = True
+    #     print(f"    ✅ FM 감지: 변화량 {centroid_variation:.1f} Hz")
+    # else:
+    #     fm_detected = False
+    #     print(f"    ❌ FM 미감지")  
+
+
+
+#(수정)sideband 기반 AM/FM 감지 추가
+    print(f"\n [Sideband Analysis]")
+
+    #STFT 
+    D = librosa.stft(y, hop_length=hop) #모든 주파수 빈이 각 행에 있고, 열은 시간의 흐름
+    magnitude = np.abs(D) # D의 값을 (시간에 따른 각 주파수빈의 에너지 변화) 절대값 취함
+    freqs = librosa.fft_frequencies(sr=sr) 
+        #이게 뭔지를 모르겠네 . 이거 library 보니까 return np.fft.rfftfreq(n=n_fft, d=1.0 / sr)를 리턴한다는데, 
+        # 그럼 굳이 이걸로 쓰는 이유가 뭐야? : 이건 자동으로 n_fft를 계산해줌. 직접쓰려면 n_fft, d=1.0/sr 넣어줘야함
+    avg_spectrum = np.mean(magnitude, axis=1)
+        #각 주파수 빈의 배열내부 진폭값을 평균시킴
+
+    # #피크 찾기
+    from scipy.signal import find_peaks
+    peaks, _ = find_peaks(avg_spectrum,
+                          height=np.max(avg_spectrum) * 0.05,
+                          prominence=np.max(avg_spectrum) * 0.02,  # 돌출도 추가
+                          distance=5)
+        #여기서는 왜 scipy.signal 라이브버리 안에 있는걸 써야하고, find_peaks 가 전체 주파수빈에서 레벨이 큰 애들 알려주는 것. 
+        #그리고 저기 peaks, _ 의 _ 자리에는 뭐가 추출돼? properties 를 추출
+        # : {
+            # 'peak_heights': [0.5, 0.8, 0.3],  # 각 피크의 높이
+            # 'left_bases': [40, 120, 450],     # 왼쪽 베이스
+            # 'right_bases': [50, 130, 460],    # 오른쪽 베이스
+        # ... 등등 => 얘네와 같은 이런 dict 형태의 값들을 보여줌 (필요없으면 _로 버림)
+                 #}               
+        # height=np.max(avg_spectrum) * 0.1, => 최대값의 10% 이상인 피크만 찾기
+        # distance=10 => 피크간 최소간격. 10칸 내에 여러 피크있으면 가장 높은것만 선택함 => index100(값 80), 인덱스 105(값 85) -> 이렇게 10개의 인덱스 내에 5칸으로 가까운 피크값이 두개가 나오면 둘중에 큰 값으로 선택
+        # prominence: 주변 대비 얼마나 튀어나왔는지
+
+    sideband_detected = False # 초기값 
+    sideband_spacing = 0.0
+
+
+    if len(peaks) >= 2 : 
+        peak_freqs = freqs[peaks]
+        spacings = np.diff(peak_freqs)
+
+        if len(spacings) > 0:
+            avg_spacing = np.mean(spacings[:3])
+            spacing_std = np.std(spacings[:3])
+
+            #간격이 일정하고 (변동 작음) 변조 주파수 범위 내
+            if 1 < avg_spacing < 20 and spacing_std < 2.0:
+                sideband_detected = True
+                sideband_spacing = avg_spacing
+                print(f"    ✅ Sideband 감지 : 변조 {avg_spacing:.2f}Hz")
+            else:
+                print(f"    ❌ Sideband 미감지")
 
 
     return {
@@ -287,10 +339,16 @@ def detect_modulation(y, sr, hop=256):
     'vibrato_strength': vibrato_strength,
 
     # 일반 AM/FM
-    'am_detected': am_detected,
-    'fm_detected': fm_detected,
-    'rms_variation': rms_variation,
-    'centroid_variation': centroid_variation,
+    # 'am_detected': am_detected,
+    # 'fm_detected': fm_detected,
+    # 'rms_variation': rms_variation,
+    # 'centroid_variation': centroid_variation,
+
+    #사이드밴드 기반 AM/FM 추출용도
+    'sideband_detected': sideband_detected,
+    'sideband_spacing': sideband_spacing,
+    'avg_spectrum': avg_spectrum,
+    'spectrum_freqs': freqs,
 
     # FFT 데이터 (시각화용)
     'rms_fft': np.abs(rms_fft),
@@ -396,7 +454,7 @@ def plot_modulation(y, sr, result, filename):
     
     name_only = os.path.splitext(filename)[0]
     plt.savefig(f"modulation_{name_only}.png", dpi=150)
-    plt.show()
+    # plt.show()
 
 
 
@@ -414,7 +472,7 @@ def main():
     print(f"📊 발견된 파일: {len(audio_files)}개")
     print("=" * 80)
     
-    for path in audio_files:
+    for path in audio_files[:1]:
         filename = os.path.basename(path)
         
         print(f"\n{'─'*60}")
@@ -554,4 +612,25 @@ sin(A)·sin(B)
 (2)AM 
 x(t) = sin(2π·440t) * (1 + sin(2π·6t))
 
+"""
+
+
+"""FM의 사이드밴드 공식 (베셀 함수)
+
+python# FM 변조 지수 (β)
+β = frequency_deviation / modulator_freq
+
+# 예시 1: β = 0.5 (작은 변조)
+440Hz: 주성분
+440±6Hz: 약한 사이드밴드
+→ 사이드밴드 간격 일정함 ✅
+
+# 예시 2: β = 5 (큰 변조)
+440Hz: 약함
+440±6Hz: 강함
+440±12Hz: 강함
+440±18Hz: 중간
+440±24Hz: 약함
+→ 간격은 6Hz로 일정하지만, 
+   강도가 불규칙 → 피크 선택 어려움 ❌
 """
