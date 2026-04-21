@@ -13,9 +13,14 @@ from scipy import signal
 
 #Audio parameters
 
-SAMPLE_RATE = 44100  #Hz. 여기 대문자로 표기하는 이유? 그냥 변수인건가?
+# ====== 설정 (전역 상수) ======
+SAMPLE_RATE = 44100  #Hz. 대문자 변수 : 전역 상수 (constant). = python 관례. 이 값을 바꾸지 말라는 뜻
 DURATION = 1.0  #seconds
 FREQUENCY = 440  #A4 note 
+
+# 시간 배열 생성 : t = np.linspace(0, 1, 44100)
+# phase 계산 : phase = 2 * np.pi * freq * t
+# 파형 생성 : wave = np.sin(phase)   <- 이 phase 를 파형으로 변환
 
 
 def generate_sine(freq, duration, sample_rate):
@@ -83,8 +88,157 @@ def generate_triangle(freq, duration, sample_rate):
     t = np.linspace(0, duration, int(sample_rate * duration), endpoint=False)
     phase = (freq * t) % 1.0
         #Triangle = rises from -1 to +1, then falls back 
+        #Saw 랑 같게 modulo 계산 후 나머지값을 챙기는데, 
     tri = 2 * np.abs(2*phase -1) - 1
     return tri, t
+
+
+#파형 확인
+# wave, _ = generate_sine(FREQUENCY, DURATION, SAMPLE_RATE) 
+    # 이 함수를 써서 wave, 혹은 t 값만 빼올 수 있음
+# print(wave)
+
+
+def plot_waveform_comparison():
+    """모든 waveform 을 시간도메인에서 비교"""
+    fig, axes = plt.subplots(4, 1, figsize=(10, 8))
+        # 여기서 subplots 로 객체를 생성하고, 
+        # axes[0], axes[1], axes[2], axes[3] 생성 - 빈상태
+
+    waveforms = [
+        ("Sine", generate_sine), #파형이름, 파형메이킹 함수이름
+        ("Sawtooth", generate_sawtooth),
+        ("Square", generate_square),
+        ("Triangle", generate_triangle)
+    ]
+
+    for idx, (name, gen_func) in enumerate(waveforms):
+        wave, t = gen_func(FREQUENCY, 0.01, SAMPLE_RATE) #10ms plot.
+            #함수 호출 후 각 함수에서 wave 와 t 를 return 해옴
+        axes[idx].plot(t * 1000, wave, linewidth=1.5) #convert to ms
+            # 여기서 위의 각 axes[0].. 안에 데이터가 복사 & 저장이 됨 -> 그래서 for 문이 다 지나가도, 내용이 담겨져 있는것
+            # wave, t 는 다음 루프에서 덮어씌워짐 
+        axes[idx].set_ylabel('Amplitude')
+        axes[idx].set_title(f'{name}wave - Time domain')
+        axes[idx].grid(True, alpha=0.3)
+        axes[idx].set_ylim(-1.2, 1.2)
+
+    axes[-1].set_xlabel('Time(ms)')
+    plt.tight_layout()
+    plt.show()
+
+def analyze_spectrum(wave, sample_rate, title):
+    #사실 이 함수는 안 쓰이고 있음. 그래도 주석 써놓은게 아까워서 지우지는 않겠다.
+    """FFT를 이용한 주파수 스펙트럼 분석
+    
+    Fast Fourier Transform : 
+        - time domain -> freq domain transform
+        - 각 주파수 성분의 amplitude 와 phase 추출
+    """
+
+    N = len(wave) #샘플 개수
+    #Compute FFT
+    fft_result = fft(wave)  #시간도메인(wave) -> 주파수 도메인 변환 ( 각 주파수 성분이 얼마나 있는지 분석 )
+                            # 결과는 complex(복소수). 크기+위상 정보
+    freqs = fftfreq(N, 1/sample_rate) 
+        # N : 샘플 개수, 1/sample_rate : 샘플 하나당 간격 (초)
+        # fftfreq() : 각 FFT bin 이 몇 Hz 인지?
+        # 주파수:   0   1   2   3  -4  -3  -2  -1 => 이렇게 FFT 경과는 대칭이 됨 (음수 주파수 : 양수 주파수의 복제(대칭))
+
+    #Positive frequencies only (FFT는 대칭이므로)
+    positive_freqs = freqs[:N//2]
+    magnitude = np.abs(fft_result[:N//2]) * 2 / N 
+        #fft_result 의 N(샘플개수) 를 2 로 나눈 부분까지만 사용
+        # * 2 / N : 뒤쪽 절반을 버렸으니, 에너지가 반으로 줄어들기 때문에 *2배 함 
+        # /N : FFT는 샘플 개수에 비례해서 커짐으로 N으로 나누어서 원래 진폭으로 normalize
+        # (1) np.abs() : 복소수의 크기 
+
+    #Plot only up to 10kHz for clarity
+    mask = positive_freqs < 10000
+        # 이 때의 mask = [True, True, True, False, False ..]
+        # 사람의 귀는 20kHz 까지 들음. 10kHz 까지만 봐도 충분하다.
+
+    plt.figure(figsize=(12, 5))
+    plt.plot(positive_freqs[mask], magnitude[mask], linewidth=1)
+    plt.xlabel('Frequency (Hz)')
+    plt.ylabel('Magnitude')
+    plt.title(title)
+    plt.grid(True, alpha=0.3)
+
+    return positive_freqs, magnitude
+
+def plot_all_spectrums():
+    """모든 파형 FFT 스펙트럼 비교"""
+    fig, axes = plt.subplots(2, 2, figsize=(10, 8))
+    axes = axes.flatten()
+
+    waveforms = [
+        ("Sine", generate_sine), #파형이름, 파형메이킹 함수이름
+        ("Sawtooth", generate_sawtooth),
+        ("Square", generate_square),
+        ("Triangle", generate_triangle)
+    ]
+
+    for idx, (name, gen_func) in enumerate(waveforms):
+        wave, _ = gen_func(FREQUENCY, DURATION, SAMPLE_RATE)
+
+        N = len(wave)
+        fft_result = fft(wave)
+        freqs = fftfreq(N, 1/SAMPLE_RATE)
+
+        positive_freqs = freqs[:N//2]
+        magnitude = np.abs(fft_result[:N//2]) * 2 / N
+
+        #Plot up to 10kHz
+        mask = positive_freqs < 10000
+        
+        #여기의 [::10]이 [::100]으로 되어있어서 sine 파에 뭐가 되게 많게 보였다. 
+        axes[idx].stem(positive_freqs[mask][::10], magnitude[mask][::10], 
+                       linefmt='b-', markerfmt='bo', basefmt='gray')
+        axes[idx].set_xlabel('Frequency (Hz)')
+        axes[idx].set_ylabel('Magnitude')
+        axes[idx].set_title(f'{name} - Frequency Spectrum')
+        axes[idx].grid(True, alpha=0.3)
+        # ===== 로그 scale 로 x 축 바꾸기 =====
+        axes[idx].set_xscale('log')
+
+        #Annotate(주석을 달다) harmonics 
+        if name == "Sine" : 
+            axes[idx]. text(0.5, 0.9, 'Only fundamental (1st harmonic)',
+                            transform=axes[idx].transAxes, fontsize=10,
+                            bbox=dict(boxstyle='round', facecolor='wheat', alpha=0.5))
+
+        elif name == "Sawtooth":
+            axes[idx].text(0.5, 0.9, 'All harmonics: 1/n decay',
+                          transform=axes[idx].transAxes, fontsize=10,
+                          bbox=dict(boxstyle='round', facecolor='wheat', alpha=0.5))
+        elif name == "Square":
+            axes[idx].text(0.5, 0.9, 'Odd harmonics only: 1/n decay',
+                          transform=axes[idx].transAxes, fontsize=10,
+                          bbox=dict(boxstyle='round', facecolor='wheat', alpha=0.5))
+        elif name == "Triangle":
+            axes[idx].text(0.5, 0.9, 'Odd harmonics: 1/n² decay (faster!)',
+                          transform=axes[idx].transAxes, fontsize=10,
+                          bbox=dict(boxstyle='round', facecolor='wheat', alpha=0.5))
+
+    plt.tight_layout()
+    plt.show()
+    print("✓ Spectrum comparison saved")
+
+# Execute Day 1 
+if __name__ == "__main__":  # 파이썬 해당 파일에서 직접 실행했을때만 작동되는 것 . 
+                            #직접 실행한다면 __name__ == "__main__" 이 True 가 됨 
+    print("="*50)
+    print("DAY 1 : Basic waveform generation")
+    print("="*50)
+
+    plot_waveform_comparison()
+    plot_all_spectrums()
+
+    
+
+
+
 
 
 """ generate_sine
@@ -190,3 +344,33 @@ y(t) = (4/π) * [
 """
 
 
+"""if __name__ == "__main__": -> 이 파일을 직접 실행할 때만 실행함 (import 로 불러올 떄는 실행 안됨)
+
+
+# calculator.py
+
+def add(a, b):
+    return a + b
+
+def subtract(a, b):
+    return a - b
+
+# 메인 실행 부분
+if __name__ == "__main__":
+    print("계산기 테스트")
+    print(f"2 + 3 = {add(2, 3)}")
+    print(f"5 - 2 = {subtract(5, 2)}")
+
+    -> 이런 파일이 있고, 직접 이 파일 내에서 실행한다면, print("계산기 테스트") 이 부분도 출력 되는데, 
+    
+    다른 프로젝트에서 
+
+    import calculator
+
+    result = calculator.add(10, 20) 이렇게 쓴다면
+
+    # 그냥 30 만 출력됨 ( __name__ 이 부분 출력 안됨 )
+    
+    
+
+"""
