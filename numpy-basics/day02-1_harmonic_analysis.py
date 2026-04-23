@@ -321,9 +321,7 @@ square(t) = (4/π) * [sin(ωt)/1 + sin(3ωt)/3 + sin(5ωt)/5 + ...]
 square_N(t) = (4/π) * [sin(ωt)/1 + ... + sin((2N-1)ωt)/(2N-1)]
 ++            유한 배음 → Gibbs 현상 발생!
 
-git add .
-git commit -m "feat : fft + unique waveform generation"
-git push origin main
+
 
 
 """
