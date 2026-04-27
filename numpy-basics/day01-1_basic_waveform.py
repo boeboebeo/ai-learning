@@ -485,7 +485,7 @@ wave(t) = A₁ * sin(1ωt) + A₂ * sin(2ωt) + A₃ * sin(3ωt) + ... 이렇게
 """
 
 git add .
-git commit -m "feat : am vs rm visualization complete!"
+git commit -m "feat : FM start "
 git push origin main
 
 wip : work in progress. 아직 작업중(미완인 프로젝트 올릴때 쓰는 커밋 컨벤션(관습))
