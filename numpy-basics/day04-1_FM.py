@@ -157,4 +157,166 @@ def fm_modulation_index_sweep():
     plt.tight_layout()
     plt.show()
 
-fm_modulation_index_sweep()
+def fm_cm_ratio_harmonic_vs_inharmonic():
+    """
+    C:M ratio (Carrier to Modulator ratio)의 영향
+    
+    Integer ratios (정수비):
+        - 1:1, 2:1 .. -> harmonic spectrum
+        - sidebands align with harmonic series (배음렬과 일치)
+
+    Non-integer ratios (비정수비):
+        -1:1.414, 3.7:! -> inharmonic spectrum
+
+    """
+    carrier_freq = 440
+    mod_index = 3.0
+
+    #Different C:M ratios 
+    cm_ratios= [
+        (1, 1, "1:1 (Harmonic)"),
+        (2, 1, "2:1 (Harmonic)"),
+        (3, 2, "3:2 (Harmonic)"),
+        (1, 1.414, "1:√2 (Inharmonic)"),
+        (1, 0.05, "1:0.05 (Harmonic)"),
+    ]
+
+    fig, axes = plt.subplots(len(cm_ratios), 1, figsize = (10, 8))
+
+    for idx, (c_ratio, m_ratio, label) in enumerate(cm_ratios):
+        #Modulator frequency based on C:M ratio 
+        mod_freq = carrier_freq * (m_ratio / c_ratio)
+        fm_signal, _ = frequency_modulation(carrier_freq, mod_freq, mod_index,
+                                            DURATION, SAMPLE_RATE)
+        
+        #FFT
+        N = len(fm_signal)
+        fft_result = fft(fm_signal)
+        freqs = fftfreq(N, 1/SAMPLE_RATE)
+        positive_freqs = freqs[:N//2]
+        magnitude = np.abs(fft_result[:N//2] * 2 / N)
+
+        axes[idx].plot(positive_freqs, magnitude, linewidth = 1)
+        axes[idx].set_xlim(0, 4000)
+        axes[idx].set_ylabel('Magnitude')
+        axes[idx].set_title(f'C:M = {label}, Mod freq = {mod_freq}Hz')
+        axes[idx].grid(True, alpha =0.3)
+
+        #Harmonic markers (배음 위치 표시)
+
+        if "Harmonic" in label:
+            for n in range(1, 11):
+                harmonic_freq = carrier_freq * n
+                if harmonic_freq < 4000:
+                    axes[idx].axvline(harmonic_freq, color='green', alpha=0.3, linestyle=':')
+            axes[idx].text(0.7, 0.7, 'Green lines = harmonics\nSidebands align',
+                               transform= axes [idx].transAxes, fontsize =9,
+                               bbox=dict(boxstyle='round', facecolor='lightgreen', alpha=0.5))
+        else :
+            axes[idx].text(0.7, 0.7, 'Sidebands do Not align\nwith harmonics -> inharmonic',
+                           transform =axes[idx].transAxes, fontsize=9,
+                           bbox=dict(boxstyle='round', facecolor='orange', alpha=0.5))
+            
+    axes[-1].set_xlabel('Frequency(Hz)')
+    plt.tight_layout()
+    plt.show()
+
+
+def bessel_function_visualization():
+    """Bessel functions 시각화 
+    
+    """
+
+
+def fm_time_domain_visualization():
+    """
+    FM의 시간도메인의 분석
+
+    Instantaneous frequency (순간 주파수) 변화 시각화
+    """
+
+    carrier_freq = 110
+    mod_freq = 5 #slow modulation to see frequency changes
+    mod_index = 20
+
+    t = np.linspace(0, 0.5, int(SAMPLE_RATE * 0.5), endpoint=False)
+        #0.5초 까지니까 sample_rate 의 절반까지
+    
+    #generate FM
+    modulator = np.sin(2 * np.pi * mod_freq * t)
+    phase = 2 * np.pi * carrier_freq * t + mod_index * modulator
+    fm_signal = np.sin(phase) # FM 결과
+
+    #calculate instantaneous frequency (순간 주파수)
+    #f(t) = (1/2π) * dφ/dt => 주파수 : 위상을 미분한 것. (한 주기 기준이기때문에 2π를 나누는것)
+
+    instantaneous_freq = carrier_freq + mod_index * mod_freq * np.cos(2 * np.pi * mod_freq * t)
+        # 각각 미분해서 * (1/2π) 함
+
+    fig, axes = plt.subplots(3, 1, figsize=(10, 8))
+
+    # Modulator
+    axes[0].plot(t * 1000, modulator, linewidth=1.5, color='green')
+    axes[0].set_ylabel('Amplitude')
+    axes[0].set_title('Modulator')
+    axes[0].grid(True, alpha=0.3)
+
+    # FM signal 
+    axes[1].plot(t * 1000, fm_signal, linewidth=1.5, color='green')
+    axes[1].set_ylabel('Amplitude')
+    axes[1].set_title('FM signal')
+    axes[1].grid(True, alpha=0.3)
+
+    # Instantaneous frequency : 그 순간에서의 Carrier 가 몇 Hz 로 진동하는지!
+    axes[2].plot(t * 1000, instantaneous_freq, linewidth=2, color='red')
+    axes[2].set_ylabel('Frequency(Hz)')
+    axes[2].set_xlabel('Time(ms)')
+    axes[2].set_title('Instantaneous Frequency (Carrier Hz at each moment)')
+    axes[2].axhline(carrier_freq, color='blue', linestyle='--', alpha=0.5,
+                    label=f'Carrier : {carrier_freq}Hz')
+    axes[2].axhline(carrier_freq + mod_index * mod_freq, color='green',
+                    linestyle=':', alpha=0.5, label=f'Max: {carrier_freq + mod_index * mod_freq}Hz')
+    axes[2].axhline(carrier_freq - mod_index * mod_freq, color='orange',
+                    linestyle=':', alpha=0.5, label=f'Min: {carrier_freq - mod_index * mod_freq}Hz')
+    axes[2].grid(True, alpha=0.3)
+
+    plt.tight_layout()
+    plt.show()
+
+
+"""
+마지막 time_domain_visualization 을 시각화해보았을때 
+뭔가 FM에서의 형태가 뭔가 Modulator 의 진폭이 작아질때 결과가 느려지기 시작하는것 같은 현상 발견. 
+(제일 높은 진폭에서 제일 주파수가 빨라보이지 않음) 
+
+**sin vs cos(위상차이)**
+: sine 을 미분하면 cosine 이 됨 (90도 앞당겨짐)
+
+: f(t) = 1/2pi * dϕ(t)/dt - 주파수를 구하는 방법. 위상부분을 t로 미분하고 1/2파이 를 곱합 
+       = fc + I * fm *cos(2pi * fm * t) . cos 이 됨 
+       = 위상에 sine을 넣었는데, 주파수는 "미분 결과"라서 cos 이 튀어나온 것.
+
+sin 과 cos 는 90(pi/2) 위상차이가 있다
+
+    위 코드에서
+    modulator = sin(..)
+    instantaneous frequency = cos(..) => 이렇게 각각 다른 위상으로 제어되고 있기 때문에
+
+    => 주파수 변화는 "모듈레이션 값"이 아니라 "모듈레이터의 변화율"에 의해 결정됨
+
+    +modulator(sine)의 값이 0(음수로 떨어지는 0점)점이 되는 그 순간(중간값)
+    : 제일 주파수가 느려짐
+
+    +modulator(sine)의 값이 0(양수로 올라가는 0점)점이 되는 그 순간
+    : 제일 주파수가 빨라짐
+
+    => 주파수는 sine 값이 아니라, sin 의 기울기(=cos. 미분하면 cos가 나오니까)에 의해 결정됨
+        => 그리고 그 기울기의 부호(+, -) 때문에 차이가 생겨남
+
+**f(t) = fc + I * fm * cos(2pi*fm*t) 이기 때문에 cos 값이 주파수를 결정함.
+
+=> cos = modulator 의 변화속도 = 위상의 증가속도 = 그게 높아지면 carrier 주파수가 빠르게 진동함
+
+"""
+
+
