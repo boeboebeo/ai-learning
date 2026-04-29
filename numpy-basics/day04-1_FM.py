@@ -225,7 +225,67 @@ def fm_cm_ratio_harmonic_vs_inharmonic():
 def bessel_function_visualization():
     """Bessel functions 시각화 
     
+    Jn(I) : nth order Bessel function of the first kind
+        - Determines amplitude of nth sideband in FM
+        - Oscillates(진동) and decays(감쇠) with increasing n
     """
+
+    #indices = index의 복수형
+    mod_indices = np.linspace(0, 10, 200)
+        #이건 0~10까지를 균등하게 나누는 200개의 값 생성
+
+    fig, axes = plt.subplots(2, 1, figsize=(10, 8))
+
+    # plot J0 ot J5
+
+    for n in range(6):
+        bessel_values = [jv(n, I) for I in mod_indices]
+        axes[0].plot(mod_indices, bessel_values, label=f'J_{n}(I)', linewidth=2)
+            # y축 : bessel 함수 값 = 해당 sideband의 진폭
+            # J_0 = carrier, J_1 = 1st sideband, j_2 = 2nd sideband...
+
+    axes[0].set_xlabel('Modulation Index(I)')
+    axes[0].set_ylabel('Bessel Function Value')
+    axes[0].set_title('Bessel Functions: Sideband Amplitude Prediction')
+    axes[0].legend(loc='upper right')
+        #그래프 위에 범례를 오른쪽 위에 표시하란 말. 라벨 박스
+        #axes[0].plot(. . , label = _ ) 이 label 있어야 읽어서 표시함
+    axes[0].grid(True, alpha= 0.3)
+    axes[0].axhline(0, color='black', linewidth=0.5)
+
+    #carrier null points (carrier disappears)
+    #J0(I) = 0 at I = 약 2.4, 5.5, 8.7 .. 일때 J0(I)가 0이 나옴
+    carrier_nulls = [2.4048, 5.5201, 8.6537]
+    for null in carrier_nulls:
+        if null < 10:
+            axes[0].axvline(null, color='red', linestyle='--', alpha=0.5)
+            axes[0].text(null, 0.8, f'I={null:.1f}\nCarrier=0!',
+                            fontsize=8, ha='center',
+                            bbox=dict(boxstyle='round', facecolor='red', alpha=0.3))
+            
+    #Practical example : spectrum at differenct I values
+    example_indices = [0.5, 2.4, 5.0]
+    colors = ['b', 'r', 'g']
+        #['blue', 'red', 'green] 은 밑에서 blue-, blueo 때문에 에러가 남
+
+    for I, color in zip(example_indices, colors):
+        n_vals = np.arange(0, 16)
+        bessel_amps = [abs(jv(n, I)) for n in n_vals]
+            # .stem : 막대그래프
+        axes[1].stem(n_vals + np.random.uniform(-0.1, 0.1, len(n_vals)),
+                        bessel_amps, linefmt=f'{color}-', markerfmt=f'{color}o',
+                        basefmt='gray', label=f'I = {I}')
+        
+    axes[1].set_ylabel('Sideband Order (n)')
+    axes[1].set_ylabel('Amplitude')
+    axes[1].set_title('Sideband Amplitudes for Different Modulation Indices')
+    axes[1].legend()
+    axes[1].grid(True, alpha=0.3)
+
+    plt.tight_layout()
+    plt.show()
+            
+
 
 
 def fm_time_domain_visualization():
@@ -319,4 +379,62 @@ sin 과 cos 는 90(pi/2) 위상차이가 있다
 
 """
 
+"""bessel_function_visualization() graph 가 보여주는 것 .
 
+I=0일때, J_0 = 1, 나머지는 0.
+-> carrier 만 있고, sideband 없음
+
+I=2일때, J_0 = 0.22, J_1 = 0.58, J_2 = 0.35..
+-> carrier 가 약해지고, sideband 가 생김
+
+I=2.4일때, J_0 = 0
+-> carrier 가 완전히 사라짐 
+
+"""
+
+"""Jacobi-anger 전개
+
+* β = 0 (FM 없음)
+    sin(x + 0*sin(y)) = sin(x)
+
+    # Jacobi-Anger로 계산하면:
+    = J_0(0)*sin(x) + J_1(0)*sin(x+y) + J_2(0)*sin(x+2y) + ...
+
+    # Bessel 함수 값:
+    J_0(0) = 1
+    J_1(0) = 0
+    J_2(0) = 0
+    ...
+
+    # 따라서:
+    = 1*sin(x) + 0 + 0 + ... = sin(x) ✓. 캐리어만 남음
+
+* β = 1 (약한 FM)
+    sin(x + 1*sin(y))
+
+    # Bessel 함수 값:
+    J_0(1) ≈ 0.765
+    J_1(1) ≈ 0.440  
+    J_2(1) ≈ 0.115
+    J_3(1) ≈ 0.020
+    J_4(1) ≈ 0.002  (거의 0)
+
+    # Jacobi-Anger 전개:
+    = 0.765 * sin(x)           # carrier
+    + 0.440 * sin(x+y)         # 1st upper sideband
+    + 0.440 * sin(x-y)         # 1st lower sideband  
+    + 0.115 * sin(x+2y)        # 2nd upper
+    + 0.115 * sin(x-2y)        # 2nd lower
+    + 0.020 * sin(x+3y)        # 3rd (거의 무시 가능)
+    + ...
+
+                            => 이렇게 사이드 밴드가 생겨나게 됨!
+
+
+"""
+
+
+# fm_modulation_index_sweep()
+# fm_cm_ratio_harmonic_vs_inharmonic()
+bessel_function_visualization()
+# fm_time_domain_visualization()
