@@ -188,12 +188,176 @@ def oversampling_antialiasing():
     """
 
     freq = 440
-    oversample_factor = 4
+    oversample_factor = 501 # x4 oversampling 
 
     #generate at higher rate
-    high_sr = SAMPLE_RATE * oversample_factor
-    t_high = np.linspace(0, DURATION, int(high_sr * DURATION), endpoinst=False)
+    high_sr = SAMPLE_RATE * oversample_factor 
+    t_high = np.linspace(0, DURATION, int(high_sr * DURATION), endpoint=False)
 
     #naive sawtooth at high sample rate
     phase_high = (freq * t_high) % 1.0
+        # 전체 시간 배열(t_high) 에 freq(440Hz)를 곱함
+        # = 440 * [0, 0.00001, 0.00002, ...]
+        # = [0, 0.0044, 0.0088, 0.0132, ...]. 각 시간마다 몇 사이클이 지났는지 
+        # ex. 0.001초면 440 * 0.001 = 0.44cycle, 0.5초면 220 cycle, 1초면 440 cycle
+    saw_high = 2 * phase_high - 1 #bi polar로 만들기
+
+    # Low-pass filter (nyquist of target rate)
+    # cutoff at original nyquist (SAMPLE_RATE / 2)
+    nyquist_high = high_sr / 2
+    cutoff = SAMPLE_RATE / 2
+    normalized_cutoff = cutoff / nyquist_high
+        # normalized_cutoff = (새로운 nyquist) / (기존 nyquist)
+        # normalized_cutoff 는 0~1 사이 값으로 변환한 cutoff
+
+
+    # Design low-pass filter
+    # Using FIR filter (Finite Impulse Response)
+    numtaps = 101 # filter order (필터 차수)
+    lpf = signal.firwin(numtaps, normalized_cutoff, window='blackman')
+        # signal.firwin()이 반환하는 것 : 길이 101인 필터 계수 배열 -> filter_coeff
+        # 각 입력 샘플에 곱할 가중치(필터 계수). 중앙이 가장 크고 양쪽이 대칭
+        # Convolution 으로 필터링 수행
+
+    #Apply filter
+    saw_filtered = signal.lfilter(lpf, 1.0, saw_high)
+        #lpf : filter coefficient
+        #1.0 : 
+        #saw_high : oversamling 한 sawtooth
+
+    #Downsample
+    saw_downsampled = saw_filtered[::oversample_factor]
+        #다시 오버샘플링 한 만큼(x4)의 간격의 것들만 고르기 
     
+    #compare with naive version
+    t_normal = np.linspace(0, DURATION, int(SAMPLE_RATE * DURATION), endpoint=False)
+    phase_normal = (freq * t_normal) % 1.0
+    saw_naive = 2 * phase_normal - 1
+
+    #FFT comparison
+    N = len(saw_downsampled)
+    fft_over = fft(saw_downsampled)
+    fft_naive = fft(saw_naive)
+    freqs = fftfreq(N, 1/SAMPLE_RATE)
+    positive_freqs = freqs[:N//2]
+    mag_over = np.abs(fft_over[:N//2] * 2 /N)
+    mag_naive = np.abs(fft_naive[:N//2] * 2 /N)
+
+    fig, axes = plt.subplots(2, 2, figsize=(10, 8))
+
+    # Time domain comparison
+    plot_samples = int(0.01 * SAMPLE_RATE)
+    t_plot = t_normal[:plot_samples] * 1000
+
+    axes[0, 0].plot(t_plot, saw_naive[:plot_samples], linewidth=1.5, color='red')
+    axes[0, 0].set_ylabel('Amplitude')
+    axes[0, 0].set_title('Naive Sawtooth')
+    axes[0, 0].grid(True, alpha=0.3)
+    
+    axes[0, 1].plot(t_plot, saw_downsampled[:plot_samples], linewidth=1.5, color='blue')
+    axes[0, 1].set_ylabel('Amplitude')
+    axes[0, 1].set_title(f'Oversampled {oversample_factor}x + Filtered')
+    axes[0, 1].grid(True, alpha=0.3)
+    
+    # Frequency domain
+    axes[1, 0].plot(positive_freqs, mag_naive, linewidth=0.5, color='red', alpha=0.7)
+    axes[1, 0].set_xlim(10000, SAMPLE_RATE / 2)
+    axes[1, 0].set_xlabel('Frequency (Hz)')
+    axes[1, 0].set_ylabel('Magnitude')
+    axes[1, 0].set_title('Naive Spectrum (high-freq region)')
+    axes[1, 0].grid(True, alpha=0.3)
+    axes[1, 0].set_yscale('log')
+    
+    axes[1, 1].plot(positive_freqs, mag_over, linewidth=0.5, color='blue', alpha=0.7)
+    axes[1, 1].set_xlim(10000, SAMPLE_RATE / 2)
+    axes[1, 1].set_xlabel('Frequency (Hz)')
+    axes[1, 1].set_ylabel('Magnitude')
+    axes[1, 1].set_title('Oversampled Spectrum (cleaner!)')
+    axes[1, 1].grid(True, alpha=0.3)
+    axes[1, 1].set_yscale('log')
+    axes[1, 1].text(0.5, 0.9, 'Much less aliasing!',
+                   transform=axes[1, 1].transAxes, fontsize=10,
+                   bbox=dict(boxstyle='round', facecolor='lightgreen', alpha=0.6))
+    
+    plt.tight_layout()
+    plt.show()
+
+oversampling_antialiasing()
+
+"""signal.firwin()
+    : FIR (Finite Impulse Response) 필터 설계 함수
+
+    signal.firwin(numtaps, cutoff, ...)
+        1. numtaps : 필터 탭 개수
+            - 필터의 길이 (샘플 개수)
+            - 홀수여야 함 (대칭성)
+            - 클수록 : 더 정확하지만 더 많은 계산이 필요
+        2. cutoff : normalized (0~1)
+            - butter()와 동일한 방식
+
+    **FIR vs IIR 
+        1. FIR(firwin) : 
+            - finite impulse response
+            - 선형 위상 (위상 왜곡 없음)
+            - 계산량 많음 
+        2. IIR(butter) :
+            - 효율적 (적은 탭으로 가파른 필터)
+            - 위상 왜곡 있음
+            - 불안정할 수도 있음
+    """
+
+"""
+    1) 3-tap 평균 필터 (가장 간단한 low pass filter)
+        coefficients = [0.333, 0.333, 0.333]
+
+        입력신호 : [10, 20, 30, 40, 50]
+
+        출력계산 : 
+        output[0] = 0.333 * 10 + 0.333 * 20 + 0.333 * 30 = 20
+        output[1] = 0.333 * 20 + 0.333 * 30 + 0.333 * 40 = 30
+        output[2] = 0.333 * 30 + 0.333 * 40 + 0.333 * 50 = 40
+        ...
+            -> 필터링 = 주변 샘플들의 가중 평균
+
+    2) # 5-tap 필터 설계
+        coefficients = signal.firwin(5, 0.3)
+        print(coeff)
+            # 출력: [0.05, 0.25, 0.40, 0.25, 0.05] 
+                -> 중앙이 가장 큼. 좌우 대칭. 
+                -> 합이 1.0 (신호 크기 보존!)
+
+        입력: ... [A] [B] [C] [D] [E] ...
+
+        출력계산 : 
+        output[0] = [A] * 0.05 + [B] * 0.25 + [c] * 0.40 + [d] * 0.25 + [e] * 0.05
+        ourput[1] = [B] * 0.05 + [c] * 0.25 + [d] * 0.40 + [e] * 0.25 + [f] * 0.05  
+        ...
+
+    3) example 
+
+    계수:     [0.05] [0.25] [0.40] [0.25] [0.05]
+                ↓      ↓      ↓      ↓      ↓
+    입력 위치:   [A]    [B]    [C]    [D]    [E]
+                              ↑
+                          현재 출력 위치
+
+    슬라이딩 윈도우처럼 한 칸씩 이동:
+
+        Step 0: [A] [B] [C] [D] [E] → output[0]
+        Step 1:     [B] [C] [D] [E] [F] → output[1]
+        Step 2:         [C] [D] [E] [F] [G] → output[2]
+        ...
+
+    """
+
+""" numtaps 와 transition band 의 연관성
+    
+    1) 상황별 numtaps
+        - Anti aliasing(다운 샘플링 전. 높은 품질이 필요함)
+            : numtaps = 101 ~ 201
+        - 실시간 오디오 처리(지연 최소화. 처리가 빨라야 함)
+            : numtaps = 31 ~ 51
+        - 오프라인 고품질 처리
+            : numtaps = 201 ~ 501
+    
+    """
