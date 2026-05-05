@@ -219,6 +219,8 @@ def oversampling_antialiasing():
         # 각 입력 샘플에 곱할 가중치(필터 계수). 중앙이 가장 크고 양쪽이 대칭
         # Convolution 으로 필터링 수행
 
+        #Window : hamming, blackman, kaiser
+
     #Apply filter
     saw_filtered = signal.lfilter(lpf, 1.0, saw_high)
         #lpf : filter coefficient
@@ -282,7 +284,114 @@ def oversampling_antialiasing():
     plt.tight_layout()
     plt.show()
 
-oversampling_antialiasing()
+
+def additive_synthesis_antialiasing():
+    """
+    Additive synthesis = inherently alias-free!
+
+    Method : 
+    - synthesize only harmonics below Nyquist (나이퀴스트 이하만 생성)
+    - No aliasing possible !
+
+    Drawback : 
+    - Computationally expensive for many harmonics (많은 배음 시 CPU 많이 씀)
+    - O(n) complexity per harmonic (배음당 O(n)시간복잡도)
+    """
+
+    freq = 440
+
+    t = np.linspace(0, DURATION, int(SAMPLE_RATE * DURATION), endpoint = False)
+
+    # Calculate max harmonic (Nyquist limit)
+    nyquist = SAMPLE_RATE / 2
+    max_harmonic = int(nyquist / freq)
+
+    print(f"Generating {max_harmonic} harmonics (up to{freq * max_harmonic:.0f}Hz)")
+
+    # Additive synthesis : sum all harmonics below nyquist
+    saw_additive = np.zeros_like(t)
+
+    for n in range(1, max_harmonic + 1): #max harmonic 까지 만들어야 하니까
+        amplitude = (2 / np.pi) * ((-1)** (n + 1)) / n 
+        saw_additive += amplitude * np.sin(2 * np.pi * n * freq * t)
+            # saw amplitude => 반대부호가 필요한 이유
+            # : 급격한 점프(saw의 꼭대기)를 만드려면 무한히 높은 주파수가 필요한데 서로 반대로 진동시켜서 상쇄+보강을 만들기 위함
+        # print(saw_additive)
+            # 각각의 amplitude 값을 점점 더해서 결과가 나오게 되는데, 
+            # [ 0.          0.03988316  0.07960964 ... -0.11902335 -0.07960964 -0.03988316]
+            # [ 0.00000000e+00  7.83439135e-05  6.24905792e-04 ... -2.09870862e-03  -6.24905792e-04 -7.83439135e-05]
+            # [ 0.          0.03975279  0.07857467 ... -0.11557484 -0.07857467   -0.03975279]
+            # 이런식으로 점점 더해감. 각 t에 해당하는 부분들이 점점 더해짐! 
+            # 앞에부터 하나하나 채워가는거 아님 !
+
+    # Compare with naive
+    phase = (freq * t) % 1.0
+    saw_naive = 2 * phase - 1
+
+    # FFT 
+    N = len(saw_additive)
+    fft_add = fft(saw_additive)
+    fft_naive = fft(saw_naive)
+    freqs = fftfreq(N, 1/SAMPLE_RATE)
+    positive_freqs = freqs[:N//2]
+    mag_add = np.abs(fft_add[:N//2]) * 2 / N
+    mag_naive = np.abs(fft_naive[:N//2]) * 2 / N
+
+    fig, axes = plt.subplots(2, 2, figsize=(10, 8))
+
+    #Time domain 
+    plot_samples = int(0.005 * SAMPLE_RATE)
+    t_plot = t[:plot_samples] * 1000
+
+
+    axes[0, 0].plot(t_plot, saw_naive[:plot_samples], linewidth=1.5, color='red')
+    axes[0, 0].set_ylabel('Amplitude')
+    axes[0, 0].set_title('Naive Sawtooth')
+    axes[0, 0].grid(True, alpha=0.3)
+    
+    axes[0, 1].plot(t_plot, saw_additive[:plot_samples], linewidth=1.5, color='green')
+    axes[0, 1].set_ylabel('Amplitude')
+    axes[0, 1].set_title(f'Additive Synthesis ({max_harmonic} harmonics)')
+    axes[0, 1].grid(True, alpha=0.3)
+    axes[0, 1].text(0.5, 0.1, 'Gibbs phenomenon at edges\n(cannot be avoided with finite harmonics)',
+                   transform=axes[0, 1].transAxes, fontsize=8,
+                   bbox=dict(boxstyle='round', facecolor='yellow', alpha=0.5))
+    
+    # Full spectrum
+    axes[1, 0].plot(positive_freqs, mag_add, linewidth=0.5, color='green', label='Additive')
+    axes[1, 0].plot(positive_freqs, mag_naive, linewidth=0.5, color='red', alpha=0.5, label='Naive')
+    axes[1, 0].set_xlim(0, (SAMPLE_RATE / 2) +400)
+    axes[1, 0].set_xlabel('Frequency (Hz)')
+    axes[1, 0].set_ylabel('Magnitude')
+    axes[1, 0].set_title('Full Spectrum Comparison')
+    axes[1, 0].axvline(nyquist, color='blue', linestyle='--', label='Nyquist')
+    axes[1, 0].legend()
+    axes[1, 0].grid(True, alpha=0.3)
+    
+    # High-frequency region (zoomed)
+    # naive 는 무한 주파수를 시도하기 때문에, 그냥 spectrum 이 aliasing noise 로 꽉참
+    axes[1, 1].plot(positive_freqs, mag_add, linewidth=0.5, color='green', label='Additive')
+    axes[1, 1].plot(positive_freqs, mag_naive, linewidth=0.5, color='red', alpha=0.5, label='Naive')
+    axes[1, 1].set_xlim(15000, SAMPLE_RATE / 2)
+    axes[1, 1].set_xlabel('Frequency (Hz)')
+    axes[1, 1].set_ylabel('Magnitude')
+    axes[1, 1].set_title('High-Freq Region (no aliasing in additive!)')
+    axes[1, 1].legend()
+    axes[1, 1].grid(True, alpha=0.3)
+    axes[1, 1].set_yscale('log')
+
+    plt.tight_layout()
+    plt.show()
+    
+
+additive_synthesis_antialiasing()
+
+
+
+
+
+
+
 
 """signal.firwin()
     : FIR (Finite Impulse Response) 필터 설계 함수
