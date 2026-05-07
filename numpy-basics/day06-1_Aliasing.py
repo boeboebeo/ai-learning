@@ -384,7 +384,18 @@ def additive_synthesis_antialiasing():
     plt.show()
     
 
-additive_synthesis_antialiasing()
+def frequency_dependent_harmonic_limit():
+    """
+    Frequency-dependent harmonic limiting (주파수 의존적 배음 제한)
+    
+    Key insight:
+    - Low notes can have many harmonics (낮은 음은 많은 배음 가능)
+    - High notes need fewer harmonics (높은 음은 적은 배음만 필요)
+    
+    Example:
+    - A1 (55 Hz): can have ~400 harmonics before Nyquist
+    - A7 (3520 Hz): only ~6 harmonics before Nyquist
+    """
 
 
 
