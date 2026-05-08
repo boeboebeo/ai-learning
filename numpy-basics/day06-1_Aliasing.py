@@ -396,6 +396,24 @@ def frequency_dependent_harmonic_limit():
     - A1 (55 Hz): can have ~400 harmonics before Nyquist
     - A7 (3520 Hz): only ~6 harmonics before Nyquist
     """
+    frequencies = [55, 110, 220, 440, 880, 1760, 3520]  # A1 to A7
+    note_names = ['A1', 'A2', 'A3', 'A4', 'A5', 'A6', 'A7']
+    
+    nyquist = SAMPLE_RATE / 2
+    
+    max_harmonics = []
+    for freq in frequencies:
+        max_harm = int(nyquist / freq)
+        max_harmonics.append(max_harm)
+    
+    # Visualization
+    fig, axes = plt.subplots(2, 1, figsize=(14, 10))
+    
+    # Bar chart of max harmonics
+    axes[0].bar(note_names, max_harmonics, color='skyblue', edgecolor='black')
+    axes[0].set_ylabel('Max Harmonics (before Nyquist)')
+    axes[0].set_title('Frequency-Dependent Harmonic Limit')
+    axes[0].grid(True, alpha=0.3, axis='y')
 
 
 
