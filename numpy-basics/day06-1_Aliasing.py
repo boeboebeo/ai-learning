@@ -305,6 +305,7 @@ def additive_synthesis_antialiasing():
     # Calculate max harmonic (Nyquist limit)
     nyquist = SAMPLE_RATE / 2
     max_harmonic = int(nyquist / freq)
+        #기음의 몇 배수까지 만들수있는지? (=max_harmonic)
 
     print(f"Generating {max_harmonic} harmonics (up to{freq * max_harmonic:.0f}Hz)")
 
@@ -411,6 +412,7 @@ def frequency_dependent_harmonic_limit():
     
     # Bar chart of max harmonics
     axes[0].bar(note_names, max_harmonics, color='skyblue', edgecolor='black')
+        # 막대 그래프 그리는 matplotlib 함수
     axes[0].set_ylabel('Max Harmonics (before Nyquist)')
     axes[0].set_title('Frequency-Dependent Harmonic Limit')
     axes[0].grid(True, alpha=0.3, axis='y')
