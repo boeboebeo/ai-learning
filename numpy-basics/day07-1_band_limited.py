@@ -40,11 +40,25 @@ def blit_impulse_train(freq, duration, sample_rate):
         - harmonics 를 잘라놓은 Fourier series
 
     where M = floor(sample_rate / (2 * freq)) 
-    (M : (harmonics below nyquist))
+    (M : harmonics below nyquist)
 
     Properties:
     - no aliasing!
-    - efficient (and additive 보다 빠름)
-    - produces sharp discontinuities (날카로운 불연속점)
+    - efficient (and additive 보다 빠름. 
+        additive는 harmonics 하나씩 sin 계산, BLIT는 수학식 하나로 전체 harmonic 처리)
+    - produces sharp discontinuities (날카로운 불연속점) => harmonics 를 제한했지만 여전히 매우 sharp함
+
+    **일반 naive saw vs BLIT 방식
+    1)naive saw
+        : 바로 점프 -> aliasing
+    
+    2)BLIT 방식
+        : bnad-limited impulse 생성 -> 적분 -> alias-free saw 생성
 
     """
+
+    t = np.linspace(0, duration, int(sample_rate * duration), endpoint=False)
+    
+    # Calculate M (number of harmonics below Nyquist)
+    nyquist = sample_rate / 2
+    M = int(nyquist / freq)
