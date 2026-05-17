@@ -108,3 +108,19 @@ def blit_to_sawtooth(blit_signal, sample_rate):
     """
     # Leaky integrator coefficient (DC 차단 계수)
     leak = 0.999
+        # leak : 0.999
+        # 매 샘플 0.1% 감소하게 함 -> DC 누적 방지, 발산방지, 안정적인 sawtooth
+        # 순수 적분 = 발산 / Leaky 적분  = 안정적 sawtooth
+
+    saw = np.zeros_like(blit_signal)
+    accumulator = 0
+    
+    for i in range(len(blit_signal)):
+        accumulator = leak * accumulator + blit_signal[i]
+        saw[i] = accumulator
+    
+    # Normalize to [-1, 1]
+    saw = saw / np.max(np.abs(saw))
+    saw = 2 * saw - 1  # center around 0
+    
+    return saw

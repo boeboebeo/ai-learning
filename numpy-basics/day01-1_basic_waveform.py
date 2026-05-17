@@ -485,12 +485,12 @@ wave(t) = A₁ * sin(1ωt) + A₂ * sin(2ωt) + A₃ * sin(3ωt) + ... 이렇게
 """
 
 git add .
-git commit -m "feat : frequency dependent harmonic limit_visualization"
+git commit -m "feat : what is the leak"
 git push origin main
 
 wip : work in progress. 아직 작업중(미완인 프로젝트 올릴때 쓰는 커밋 컨벤션(관습))
 
--commit type-
+-commit type-d
 feat:     새로운 기능 추가
 fix:      버그 수정
 docs:     문서/주석 수정 (코드 동작 변경 없음)
