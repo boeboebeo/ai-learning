@@ -153,6 +153,12 @@ def polyblep_sawtooth(freq, duration, sample_rate):
     3. Apply PolyBLEP correction (보정 적용)
     """
 
+    t = np.linspace(0, duration, int(sample_rate * duration), endpoint=False)
+    
+    dt = freq / sample_rate  # phase increment (위상 증가량)
+    phase = 0
+    
+    output = np.zeros_like(t)
 
 
 """
