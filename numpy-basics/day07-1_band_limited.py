@@ -160,6 +160,22 @@ def polyblep_sawtooth(freq, duration, sample_rate):
     
     output = np.zeros_like(t)
 
+    for i in range(len(t)):
+        # Naive sawtooth
+        naive_saw = 2 * phase - 1
+        
+        # PolyBLEP correction at discontinuity
+        correction = polyblep_residual(phase, dt)
+        
+        output[i] = naive_saw - correction
+        
+        # Advance phase (위상 진행)
+        phase += dt
+        if phase >= 1.0:
+            phase -= 1.0
+
+    return output, t
+
 
 """
     1) Impulse : 한 점에서만 값이 있고 나머지는 0인 신호 + 모든 주파수를 동시에 포함
