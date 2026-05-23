@@ -29,7 +29,7 @@ def blit_impulse_train(freq, duration, sample_rate):
 
     ** why impulse train? **
     : saw wave 의 미분은 수학적으로 => impulse train 
-    => impulse train을 적분하면 saw wave
+    => impulse train을 leaky 적분하면 saw wave
     (but, 원래의 Impulse는 모든 주파수 포함. BLIT는 Nyquist 이하의 harmonics만 포함->aliasing 없음)
 
     concept:
@@ -66,8 +66,15 @@ def blit_impulse_train(freq, duration, sample_rate):
 
     # Phase for impulse train
     phase = (freq * t) % 1.0
+        # 컴퓨터는 연속시간이 아니고 t 위에서의 이산 time 샘플로 존재하기 때문에, 현재 샘플이 주기 안에서 어디쯤인지를 알기위해서 phase 를 도출해내야 함
+        # freq * t = 몇 주기를 돌았는지? 
+        # phase 를 0~1 범위로 반복하게 하기 위해서 % 1.0 처리함
 
-    # BLIT formula
+    # BLIT formula : sin(πMϕ) / Msin(πϕ)
+    # 여기서 sin(πϕ) 이 0이 되는 순간 존재 
+    # ϕ = 0,1,2,3,... 일때 sin(0) = 0 이 발생하여 division by zero 발생 가능
+    # 근데 극한값은 finite 해서 괜찮지만, 컴퓨터는 극한계산안하고 0/0을 하기 때문에 epsilon을 사용
+
     # Avoid division by zero : epsilon(아주작은값 = 0 으로 나누는것을 방지하는 안전장치)
         # = 1e-10 = 0.0000000001.
         # 만약 denominator 가 0일 경우, 에러날 수 있으므로, epsilon을 더해서 처리함
@@ -114,6 +121,8 @@ def blit_to_sawtooth(blit_signal, sample_rate):
     return saw
 
 def polyblep_residual(t, dt):
+    # Residual : discontinuity에서 튀어나오는 aliasing 성분만 따로 떼어낸 보정 조각
+
     """
     PolyBLEP: Polynomial Band-Limited Step (다항식 대역 제한 계단)
         => 불연속점(계단)을 부드럽게 만들어서 aliasing 을 줄이는 기법
@@ -133,14 +142,22 @@ def polyblep_residual(t, dt):
     """
     if t < dt:
         # Rising edge (상승 에지)
+        # discontinuity 바로 직후인지 파악후 => jump 근처만 수정
         t = t / dt
         return t + t - t * t - 1.0
+            # 짧은 smoothing curve
+
     elif t > 1.0 - dt:
         # Falling edge (하강 에지)
+        # 주기 끝 Discontinuity 근처. 1 -> -1 점프로 correction 필요함
         t = (t - 1.0) / dt
         return t * t + t + t + 1.0
+    
     else:
         return 0.0
+            # 그냥 여기는 그대로 naive saw 사용
+
+    #polyBLEP : 점프 직전/직후에만 아주 짧은 anti-aliasing patch 붙이는 것 (tiny smoothing correction)
     
 
 def polyblep_sawtooth(freq, duration, sample_rate):
@@ -175,6 +192,7 @@ def polyblep_sawtooth(freq, duration, sample_rate):
             phase -= 1.0
 
     return output, t
+
 
 def polyblep_square(freq, duration, sample_rate):
     """
@@ -235,7 +253,7 @@ def compare_blit_polyblep_naive():
     mag_poly = np.abs(fft_poly[:N//2]) * 2 / N
     mag_naive = np.abs(fft_naive[:N//2]) * 2 / N
     
-    fig, axes = plt.subplots(2, 3, figsize=(10, 8))
+    fig, axes = plt.subplots(2, 3, figsize=(14, 8))
     
     # Time domain
     plot_samples = int(0.01 * SAMPLE_RATE)
@@ -494,6 +512,28 @@ minblep_concept()
 3)
 
 4)
+
+"""
+
+"""BLIT formula 
+
+: sin(πMϕ) / Msin(πϕ)
+
+ 1) 주기적으로 반복되는 Impulse를 만들고 싶음
+ 2) 완벽한 impulse는 무한 harmonic을 필요로 함 => nyquist 이하의 Harmonic 만 사용한 impulse를 만들어야 겠다
+ 3) 이상적인 Impulse train : 1 + 2cos(x) + 2cos(2x) + 2cos(3x) + ... 이렇게 모든 harmonic 을 다 더한것
+    => 1f + 2f + 3f + 4f + ...
+ 4) but, BLIT 는 Harmonic 을 제한함 
+    => so, 1 + 2cos(x) + 2cos(2x) + ... + 2cos((M - 1)x) 이 유한 harmonic 합을 수학적으로 정리하면
+
+    sin(πMϕ) / Msin(πϕ) 이 공식이 나옴
+
+
+    - 분모의 M : 이 더 커지면, 더 많은 Harmonics 가 있다는 뜻이므로 더 좁은 impulse 가 생성됨
+    - 분모의 sin(πϕ) : 반복 구조 생성 (ϕ=0,1,2,...)
+    - M으로 나눠야 하는 이유 : normalization . harmonic을 많이 더하면 amplitude 가 커지니까 
+        => 크기 보정
+
 
 """
 

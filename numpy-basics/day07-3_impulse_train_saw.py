@@ -1,3 +1,5 @@
+# impulse 를 leaky 적분해야 sawtooth 가 됨
+
 import numpy as np
 import matplotlib.pyplot as plt
 
@@ -26,15 +28,17 @@ axes[1].grid(True)
 plt.tight_layout()
 plt.show()
 
-"""
 
+
+"""
 1. Band-Limited Impulse 생성 (양수만)
 2. Leaky Integrator로 적분:
    
-   y[n] = leak × y[n-1] + impulse[n]
+   y[n] = leak * y[n-1] + impulse[n]
    
 3. Leak이 자동으로:
    - 올림: impulse로
    - 내림: leak으로 감소
    
-4. 결과: Sawtooth!"""
+4. 결과: Sawtooth!
+"""
