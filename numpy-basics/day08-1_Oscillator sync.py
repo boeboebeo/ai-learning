@@ -325,6 +325,7 @@ def sync_sweep_classic_sound():
     step 1. 비율계산
         ratio = slave_freq_end / slave_freq_start
               = 1760 / 220 = 8
+              (옥타브로 몇 옥타브 위인지 계산)
 
     step 2. 진행도 계산 (0~1)
         progress = t / sweep_duration
