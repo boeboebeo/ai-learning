@@ -124,7 +124,8 @@ def blit_to_sawtooth(blit_signal, sample_rate):
     return saw
 
 def polyblep_residual(t, dt):
-    # Residual : discontinuity에서 튀어나오는 aliasing 성분만 따로 떼어낸 보정 조각
+    # Residual 
+    # : discontinuity에서 튀어나오는 aliasing 성분만 따로 떼어낸 보정 조각
 
     """
     PolyBLEP: Polynomial Band-Limited Step (다항식 대역 제한 계단)
