@@ -12,10 +12,107 @@ from scipy.io import wavfile
 
 SAMPLE_RATE = 44100
 
-# def polyblep_sawtooth(freq, duration, sample_rate):
+def polyblep_sawtooth(freq, duration, sample_rate):
+    def polyblep_residual(t, dt):
+        if t < dt:  #점프 지점 직후 구간
+            t = t / dt
+                # t = 0.0 점프 바로 직수, t = 1.0 dt 범위 끝
+                # t = t/dt => t를 0~1사이로 정규화 함
+            return t + t - t * t - 1.0
+                # 점프 
+        elif t > 1.0 - dt:
+            t = (t - 1.0) / dt
+            return t * t + t + t + 1.0
+        else:
+            # 
+            return 0.0
+        
+    """
+    1. t < dt
+    점프가 일어나는 구간 : phase = 1.0 -> 0.0 으로 리셋되는 구간
+                      phase = 0.001, 0.002 <- 점프 바로 직후 샘플들 
+        => 보정 값이 음수 : naive_saw 에서 빼면 살짝 올라감
+    
+    2. t > 1.0 - dt
+    직전 구간         : phase = 0.98, 0.99 <- 점프 바로 직전 샘플들
+
+    3. 나머지 (else:)
+    직후 구간         : phase = 0.001 <- 보정없음. 그대로
+
+    sample 0 -> t = 0 < dt 이므로 
+    
+    """
+        
+    t = np.linspace(0, duration, int(sample_rate * duration), endpoint=False)
+        # 전체 구간 그냥 각 샘플로 나눈 것 t 
+    dt = freq / sample_rate
+        # dt 는 한 샘플이 위상에서 차지하는 크기
+    phase = 0
+    output = np.zeros_like(t)
+
+    for i in range(len(t)):
+        naive_saw = 2 * phase - 1
+        correction = polyblep_residual(phase, dt)
+        output[i] = naive_saw - correction
+            # 내가 
+
+        phase += dt
+            # 한 샘플마다 dt값이 더해져서 phase 로 출력되고 그 값이 1이상이면 항상 -1.0 을 하여 
+            # 0 ~ 1 사이로 머물게 함
+        if phase >= 1.0:
+            phase -= 1.0
+
+    return output, t
 
 
-# def polyblep_square(freq, duration, sample_rate):
+
+def polyblep_square(freq, duration, sample_rate):
+    def polyblep_residual(t, dt):
+        if t < dt:
+            t = t / dt
+            return t + t - t * t - 1.0
+        elif t > 1.0 - dt:
+            t = (t - 1.0) / dt
+            return t * t + t + t + 1.0
+        else:
+            return 0.0 
+            # 점프 구간에서 먼 샘플들은 보정값 0.0으로 출력 : 아무 변화 안만듦
+        
+    t = np.linspace(0, duration, int(sample_rate * duration), endpoint=False)
+    dt = freq / sample_rate
+    phase = 0
+    output = np.zeros_like(t)
+
+    for i in range(len(t)):
+        naive_square = 1.0 if phase<0.5 else -1.0
+            #phase 값이 0.5보다 작드면 다 1.0, 그것보다 크면 -1.0
+        correction = polyblep_residual(phase, dt)
+        correction += polyblep_residual(phase - 0.5, dt)
+        output[i] = naive_square - correction
+
+        phase += dt
+        if phase >= 1.0:
+            phase -= 1.0
+
+    """ square 보정값
+index  phase    naive_sq  corr1(0근처)  corr2(0.5근처)  correction  output
+────────────────────────────────────────────────────────────────────────────
+0      0.000    +1.0      -1.0          0.0             -1.0        +2.0  ← 점프 직후
+1      0.010    +1.0       0.0          0.0              0.0        +1.0  ← 일반
+2      0.020    +1.0       0.0          0.0              0.0        +1.0
+...
+49     0.489    +1.0       0.0          0.0              0.0        +1.0
+50     0.499    +1.0       0.0         +0.59             0.59       +0.41 ← 0.5 점프 직전
+51     0.508    -1.0       0.0         -0.06            -0.06       -0.94 ← 0.5 점프 직후
+52     0.518    -1.0       0.0          0.0              0.0        -1.0  ← 일반
+...
+99     0.988    -1.0       0.0          0.0              0.0        -1.0
+100    0.998    -1.0      +0.59         0.0             +0.59       -1.59 ← 1.0 점프 직전
+101    0.008    +1.0      -0.06         0.0             -0.06       +1.06 ← 1.0 점프 직후
+102    0.018    +1.0       0.0          0.0              0.0        +1.0  ← 일반
+    """
+
+    return output, t
 
 
 def biquad_filter(signal_input, filter_type, cutoff_freq, resonance, sample_rate):
