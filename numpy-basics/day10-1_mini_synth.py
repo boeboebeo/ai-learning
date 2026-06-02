@@ -88,6 +88,7 @@ def polyblep_square(freq, duration, sample_rate):
             #phase 값이 0.5보다 작드면 다 1.0, 그것보다 크면 -1.0
         correction = polyblep_residual(phase, dt)
         correction += polyblep_residual(phase - 0.5, dt)
+            #두 보정값이 겹치는 샘플은 없음 -> 서로 방해 안함
         output[i] = naive_square - correction
 
         phase += dt
@@ -139,10 +140,18 @@ def biquad_filter(signal_input, filter_type, cutoff_freq, resonance, sample_rate
         a1 = -2 * cos_omega
         a2 = 1 - alpha
 
-    b = np.array([b0, b1, b2]) / a0
-    a = np.array([1, a1/a0, a2/a0]) #📍여기 이 배열은 뭘까?
+    b = np.array([b0, b1, b2]) / a0 # =[b0/a0, b1/a0, b2/a0] 
+        # x에 곱하는 계수들 : b배열
+    a = np.array([1, a1/a0, a2/a0]) 
+        # 분자 계수들 
+        # y에 곱하는 계수들 : a배열
 
     filtered = signal.lfilter(b, a, signal_input)
+    # signal.lfilter(b, a, signal_input) 이 함수가 내부적으로 아래의 차분방적식 실행함
+    # y[n] = b0·x[n] + b1·x[n-1] + b2·x[n-2]- a1·y[n-1] - a2·y[n-2]
+    # 이걸 실행하려면 b계수랑 a계수들을 따로 묶어줘야 함
+    
+
 
     return filtered
 
@@ -213,7 +222,7 @@ def adsr_envelope(attack, decay, sustain, release, duration, sample_rate, gate_t
         end_sample = min(current_sample + release_samples, num_samples)
         envelope[current_sample:end_sample] = np.linspace(sustain_level, 0, end_sample - current_sample)
 
-        return envelope #envelope 이란 전체 샘플개수 만큼 들어있는 magnitude 배열 출력
+    return envelope #envelope 이란 전체 샘플개수 만큼 들어있는 magnitude 배열 출력
 
 class Synthesizer:
     """
@@ -263,10 +272,11 @@ class Synthesizer:
         # OSC 1
         if self.osc1_waveform == 'sawtooth':
             osc1, _ = polyblep_sawtooth(frequency, duration, self.sample_rate)
-        elif self.osc1_waveform == 'sqaure':
+        elif self.osc1_waveform == 'square':
             osc1, _ = polyblep_square(frequency, duration, self.sample_rate)
         elif self.osc1_waveform == 'sine':
-            osc1- _ = np.sin(2 * np.pi * t * frequency)
+            osc1 = np.sin(2 * np.pi * t * frequency)
+            # 얘는 뭐 반환안하고 여기서 바로 만드는거기때문에 걍 osc, _ = 이거 없어도 됨
 
         # OSC 2
         detune_ratio = 2 ** (self.osc2_detune / 1200) 
@@ -329,7 +339,118 @@ class Synthesizer:
 
         return output, t
 
+def demo_synthesizer_presets():
+    duration = 2.0
+    frequency = 220 
 
+    # Preset 1: Classic analog lead
+    synth1 = Synthesizer()
+    synth1.osc1_waveform = 'sawtooth'
+    synth1.osc2_waveform = 'sawtooth'
+    synth1.osc2_detune = 7
+    synth1.osc1_level = 0.5 
+    synth1.osc2_level = 0.5
+    synth1.filter_cutoff = 1500
+    synth1.filter_resonance = 7.0
+    synth1.filter_envelope_amount = 0.8
+    synth1.env_attack = 0.01
+    synth1.env_decay = 0.4 
+    synth1.env_sustain = 0.0
+    synth1.env_release = 0.5
 
+    lead_sound, t = synth1.generate_note(frequency, duration, gate_time = 1.5)
+    #직접 연주를 하는게 아니니까 게이트 타임을 넣어주는거구나?
 
+    # Preset 2: Bass (베이스)
+    synth2 = Synthesizer()
+    synth2.osc1_waveform = 'square'
+    synth2.osc2_waveform = 'sawtooth'
+    synth2.osc2_detune = -1200  # one octave down (한 옥타브 아래)
+    synth2.osc1_level = 0.6
+    synth2.osc2_level = 0.4
+    synth2.filter_cutoff = 500
+    synth2.filter_resonance = 1.0
+    synth2.filter_envelope_amount = 0.5
+    synth2.env_attack = 0.001
+    synth2.env_decay = 0.1
+    synth2.env_sustain = 0.1
+    synth2.env_release = 0.3
     
+    bass_sound, _ = synth2.generate_note(frequency/2, duration, gate_time=0.5)
+    
+    # Preset 3: Pad (패드)
+    synth3 = Synthesizer()
+    synth3.osc1_waveform = 'sawtooth'
+    synth3.osc2_waveform = 'sawtooth'
+    synth3.osc2_detune = 3
+    synth3.filter_cutoff = 2500
+    synth3.filter_resonance = 0.7
+    synth3.filter_envelope_amount = 0.2
+    synth3.env_attack = 0.8
+    synth3.env_decay = 0.5
+    synth3.env_sustain = 0.7
+    synth3.env_release = 1.5
+    synth3.master_volume = 0.6
+    
+    pad_sound, _ = synth3.generate_note(frequency, duration)
+
+    # Visualize 
+    fig, axes = plt.subplots(3, 2, figsize=(12, 8))
+    
+    sounds = [
+        ("Analog Lead", lead_sound),
+        ("Bass", bass_sound),
+        ("Pad", pad_sound)
+    ]
+
+    for idx, (name, sound) in enumerate(sounds):
+        # Time domain
+        plot_samples = int(0.1 * SAMPLE_RATE)
+        t_plot = t[:plot_samples] * 1000
+
+        axes[idx, 0].plot(t_plot, sound[:plot_samples], linewidth=1)
+        axes[idx, 0].set_ylabel('Amplitude')
+        axes[idx, 0].set_title(f'{name} - Waveform')
+        axes[idx, 0].grid(True, alpha = 0.3)
+
+        # Spectrum
+        N = len(sound)
+        fft_result = fft(sound)
+        freqs = fftfreq(N, 1/SAMPLE_RATE)
+        positive_freqs = freqs[:N//2]
+        magnitude = np.abs(fft_result[:N//2]) * 2 / N
+
+        axes[idx, 1].plot(positive_freqs, magnitude, linewidth=0.5)
+        axes[idx, 1].set_xlim(20, 8000)
+        axes[idx, 1].set_xlabel('Frequency (Hz)')
+        axes[idx, 1].set_ylabel('Magnitude')
+        axes[idx, 1].set_title(f'{name} - Spectrum')
+        axes[idx, 1].grid(True, alpha=0.3)
+        axes[idx, 1].set_xscale('log')
+        axes[idx, 1].set_yscale('log')
+
+    axes[-1, 0].set_xlabel('Time(ms)')
+
+    # Play sounds. 소리 들어보는 코드. 오 이거 좋다.
+    import sounddevice as sd
+
+    print("Playing Lead...") 
+    sd.play(lead_sound.astype(np.float32), SAMPLE_RATE)
+    sd.wait()
+
+    print("Playing Bass...")
+    sd.play(bass_sound.astype(np.float32), SAMPLE_RATE)
+    sd.wait()
+
+    print("Playing Pad...")
+    sd.play(pad_sound.astype(np.float32), SAMPLE_RATE)
+    sd.wait()
+
+    print("Done.")
+
+    plt.tight_layout()
+    # plt.show()
+
+
+
+demo_synthesizer_presets()
