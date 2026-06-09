@@ -502,5 +502,13 @@ def demo_melody():
     # Concatenate (연결)
     full_melody = np.concatenate(melody_audio)
 
+    # save 자리!
+
+    # Visualize (시각화)
+    fig, axes = plt.subplots(2, 1, figsize=(14, 8))
+    
+    t_full = np.arange(len(full_melody)) / SAMPLE_RATE
+    
+
 
 demo_synthesizer_presets()
