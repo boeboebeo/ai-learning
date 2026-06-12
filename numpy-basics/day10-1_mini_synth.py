@@ -519,6 +519,14 @@ def demo_melody():
     from scipy import signal as sp_signal
     f, t_spec, Sxx = sp_signal.spectrogram(full_melody, SAMPLE_RATE,
                                            nperseg=2048, noverlap=1536)
+
+    im = axes[1].pcolormesh(t_spec, f, 10 * np.log10(Sxx + 1e-10),
+                           shading='gouraud', cmap='viridis')
+    axes[1].set_ylabel('Frequency (Hz)')
+    axes[1].set_xlabel('Time (s)')
+    axes[1].set_title('Generated Melody - Spectrogram')
+    axes[1].set_ylim(0, 2000)
+    plt.colorbar(im, ax=axes[1], label='Power (dB)')
     
 
 
