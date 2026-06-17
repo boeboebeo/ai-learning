@@ -123,7 +123,7 @@ def biquad_filter(signal_input, filter_type, cutoff_freq, resonance, sample_rate
     Q = resonance
     alpha = sin_omega / (2 * Q)
 
-    if filter_type == 'lowpass':  #📍각 계수에 대한 부분들 아직 모호
+    if filter_type == 'lowpass':  #📍각 계수에 대한 부분들 아직 모호 => 걍 recipe
         b0 = (1 - cos_omega) / 2
         b1 = 1 - cos_omega
         b2 = (1 - cos_omega) / 2
@@ -189,7 +189,8 @@ def adsr_envelope(attack, decay, sustain, release, duration, sample_rate, gate_t
     # Attack phase (attack 구간)
     if current_sample < attack_samples:
         end_sample = min(attack_samples, num_samples)
-            # attack구간의 샘플수와 전체 샘플의 합중의 작은 값이 end_sample 지점
+            # attack구간의 샘플수 vs 전체 샘플 개수중 의 작은 값이 end_sample 지점
+            # duration 보다 전체 샘플 수가 길면 안되니까 
         envelope[current_sample:end_sample] = np.linspace(0, 1, end_sample - current_sample)
             # current_sample 인 0 지점부터 end_sample 까지에 
             # 0, 1 까지를 end_sample - 0 한 만큼의 샘플수로 나누어서 넣기
@@ -217,8 +218,12 @@ def adsr_envelope(attack, decay, sustain, release, duration, sample_rate, gate_t
     # Release phase
     if current_sample < num_samples:
         sustain_level = envelope[current_sample - 1] if current_sample > 0 else sustain 
-            # if current_sample 이 0보다 크다면 (노트가 눌렸다면?. 당연히 큰거아닌가?)
-            # 아니면 sustain 레벨 => 근데 걍 같은거 아닌가....#📍
+            # if current_sample > 0 : 배열 인덱스가 -1이 되는것을 방지
+            # 만약 current_sample = 0 이면, envelope[current_sample - 1] = envelope[-1]이 됨
+            # 파이썬에서의 -1인덱스는 배열 맨 마지막을 의미 
+            # 위의 상황은 attack, decay 가 0인 상황일때를 대비하는 것 
+            # 위에서 attack, decay = 0 & gate_time = 0 이면 아예 실행이 안됨
+
         end_sample = min(current_sample + release_samples, num_samples)
         envelope[current_sample:end_sample] = np.linspace(sustain_level, 0, end_sample - current_sample)
 
@@ -238,14 +243,15 @@ class Synthesizer:
         - Master volume
     """
 
-    def __init__(self, sample_rate = 44100):  #📍이 __init__ 확실히 이해
+    def __init__(self, sample_rate = 44100):  
+        #📍 __init__ : 신스를 여러개 만들어도, 각자 독립적인 설정을 가질 수 있는게 self.xxx 덕분
         self.sample_rate = sample_rate
 
         # Oscillator parameters
         self.osc1_waveform = 'sawtooth'
-        self.osc1_level = 0.5 # 📍 이것도 범위가 어떻게 되는거지
+        self.osc1_level = 0.5 #범위 : 0 ~ 1 사이
 
-        self.osc2_waveform = 'sawtooth' # 우선 기본값이 둘다 saw 인건가?
+        self.osc2_waveform = 'sawtooth' 
         self.osc2_detune = 0.0  # cents
         self.osc2_level = 0.5
 
@@ -263,7 +269,7 @@ class Synthesizer:
         self.env_release = 0.3
 
         # Master 
-        self.master_volume = 0.8
+        self.master_volume = 0.6
 
     def generate_note(self, frequency, duration, gate_time=None):
         # Generate a single note
@@ -280,8 +286,10 @@ class Synthesizer:
 
         # OSC 2
         detune_ratio = 2 ** (self.osc2_detune / 1200) 
-            #cents to ratio ? 📍어떤 비율인건지?
+            # cents to ratio : 전체 한 옥타브중에서 몇 cents 올리는지 
+            # ex. detune = 100 이면 반음위  
         freq2 = frequency * detune_ratio
+
 
         if self.osc2_waveform == 'sawtooth':
             osc2, _ = polyblep_sawtooth(freq2, duration, self.sample_rate)
@@ -300,12 +308,15 @@ class Synthesizer:
         
         # Filter with envelope modulation
         if self.filter_envelope_amount > 0:
-            # Time-varing filter (시간 가변 필터?📍)
+            # Time-varing filter : cutoff 가 시간에 따라 변하는 필터
             filtered = np.zeros_like(mixed)
             # osc 1+osc 2 의 샘플개수만큼의 0으로 찬 배열을 만들어서 filtered 라고 만들고
             chunk_size = 512
             num_chunks = len(mixed) // chunk_size
-            # 📍왜 나눠서 계산하는가 : 하나하나의 샘플을 다 계산하면 오래걸린다 한것 때문에 그런가?
+            # 왜 512 씩 나눠서 계산하는가
+            # 컷오프를 샘플 하나씩 다 바꾸면 1초에 44100번 biquad_filter 를 호출해야함 -> 너무 느려짐
+            # 512 개 안에서는 거의 컷오프 안바뀌니까 한번에 묶어서 처리!
+            # 그냥 평균값으로 대표값을 사용함 
 
             for i in range(num_chunks):
                 start = i * chunk_size
@@ -314,9 +325,17 @@ class Synthesizer:
                 # Modulate cutoff with envelope
                 env_value = np.mean(envelope[start:end])
                     # 📍왜 평균내지? 엔벨롭 magnitude 를 512 개의 지점내에서 평균내는 이유는?
+                    # 그냥 청크묶음의 엔벨롭의 평균값을 걍 대표값으로 사용하기 위함 
                 modulated_cutoff = self.filter_cutoff * (1 + self.filter_envelope_amount * env_value * 4)
                     # filter env_amount = 0 to 1 
-                    # 📍 +1 * 4 이런거 왜 하는거야
+                    # 1 + : 일 더하는 이유는 원래 컷오프에 0을 곱해버리면 원래 있던 컷오프도 없어지니까
+                    # * env_value 
+                    # * 4 : 4를 곱하는 이유는 엔벨롭이 컷오프를 최대 4배까지 올릴 수 있도록 스케일을 키운것. 4가 없으면 변화가 거의 안느껴짐  
+                    # 근데 이러면 가청주파수 이상으로도 필터가 올라가 질 수 도 있음
+                    # 안전 장치 필요! (아래가 안전장치임)
+                modulated_cutoff = np.clip(modulated_cutoff, 20, self.sample_rate / 2 - 100)
+                    # 적어도 샘플레이트의 절반보다 -100Hz 한 주파수 까지만 컷오프가 올라가게끔 
+                    # np.clip 은 np.clip(값, 최솟값, 최댓값) : 이렇게 어떤 값이던(진폭 or 주파수 or index or Q 제한 Etc..) 제한하는 기능
                 chunk_filtered = biquad_filter(mixed[start:end], 'lowpass',
                                                modulated_cutoff, self.filter_resonance,
                                                self.sample_rate)
@@ -335,7 +354,8 @@ class Synthesizer:
         output *= self.master_volume
 
         # Prevent clipping 
-        output = np.clip(output, -1.0, 1.0) # 📍np.clip?
+        output = np.clip(output, -1.0, 1.0) 
+            # 📍np.clip : -1.0 ~ +1.0 사이로 강제로 잘라냄 (clipping)
 
         return output, t
 
@@ -431,7 +451,7 @@ def demo_synthesizer_presets():
 
     axes[-1, 0].set_xlabel('Time(ms)')
 
-    # Play sounds. 소리 들어보는 코드. 오 이거 좋다.
+    # Play sounds. 소리 들어보는 코드
     import sounddevice as sd
 
     print("Playing Lead...") 
@@ -449,7 +469,7 @@ def demo_synthesizer_presets():
     print("Done.")
 
     plt.tight_layout()
-    # plt.show()
+    plt.show()
 
 
 def demo_melody():
@@ -471,6 +491,7 @@ def demo_melody():
     }
 
     # Simple melody (간단한 멜로디)
+    # (Note_name, duration)
     melody = [
         ('C4', 0.5), ('E4', 0.5), ('G4', 0.5), ('C5', 0.5),
         ('B4', 0.5), ('G4', 0.5), ('E4', 0.5), ('C4', 0.5),
@@ -495,17 +516,24 @@ def demo_melody():
     melody_audio = []
 
     for note_name, note_duration in melody:
-    freq = notes[note_name]
-    sound, _ = synth.generate_note(freq, note_duration, gate_time=note_duration * 0.9)
-    melody_audio.append(sound)
+        freq = notes[note_name]
+        sound, _ = synth.generate_note(freq, note_duration, gate_time=note_duration * 0.9)
+        melody_audio.append(sound)
 
     # Concatenate (연결)
     full_melody = np.concatenate(melody_audio)
 
     # save 자리!
+    import os
+    filename = os.path.join(os.path.dirname(__file__), "day10_melody.wav")
+        # 간단하게 지금 파일 위치에 저장하는 법
+    melody_normalized = full_melody / np.max(np.abs(full_melody)) * 0.9
+    melody_int16 = (melody_normalized * 32767).astype(np.int16)
+    wavfile.write(filename, SAMPLE_RATE, melody_int16)
+    print(f"✓ Melody saved: {filename}")
 
     # Visualize (시각화)
-    fig, axes = plt.subplots(2, 1, figsize=(14, 8))
+    fig, axes = plt.subplots(2, 1, figsize=(12, 8))
     
     t_full = np.arange(len(full_melody)) / SAMPLE_RATE
 
@@ -547,8 +575,78 @@ def complete_synthesis_pipeline():
     synth.env_sustain = 0.4
     synth.env_release = 0.5
 
+    frequency = 220
+    duration = 2.0
+    gate_time = 1.5
 
+    t = np.linspace(0, duration, int(SAMPLE_RATE * duration), endpoint=False)
+
+    # Generate intermediate stages (중간 단계 생성)
+    osc1, _ = polyblep_sawtooth(frequency, duration, SAMPLE_RATE)
+    osc2, _ = polyblep_sawtooth(frequency * 2**(7/1200), duration, SAMPLE_RATE)
     
+    mixed = 0.5 * osc1 + 0.5 * osc2
+
+    envelope = adsr_envelope(synth.env_attack, synth.env_decay,
+                             synth.env_sustain, synth.env_release,
+                             duration, SAMPLE_RATE, gate_time)
+    
+    # Filter (static for visualization)
+    filtered = biquad_filter(mixed, 'lowpass', synth.filter_cutoff,
+                             synth.filter_resonance, SAMPLE_RATE)
+
+    final = filtered * envelope
+
+    # Visualize pipeline 
+
+    fig, axes = plt.subplots(5, 2, figsize=(12, 8))
+    
+    stages = [
+        ("OSC 1 (Sawtooth)", osc1),
+        ("OSC 2 (Sawtooth +7 cents)", osc2),
+        ("Mixed Oscillators", mixed),
+        ("After Filter", filtered),
+        ("Final Output (with Envelope)", final)
+    ]
+    
+    plot_samples = int(0.05 * SAMPLE_RATE)
+    t_plot = t[:plot_samples] * 1000
+
+    for idx, (name, stage_signal) in enumerate(stages):
+        # Time domain
+        axes[idx, 0].plot(t_plot, stage_signal[:plot_samples], linewidth=1)
+        axes[idx, 0].set_ylabel('Amplitude')
+        axes[idx, 0].set_title(f'{name} - Time Domain')
+        axes[idx, 0].grid(True, alpha=0.3)
+        
+        # Spectrum
+        N = len(stage_signal)
+        fft_result = fft(stage_signal)
+        freqs = fftfreq(N, 1/SAMPLE_RATE)
+        positive_freqs = freqs[:N//2]
+        magnitude = np.abs(fft_result[:N//2]) * 2 / N
+        
+        axes[idx, 1].plot(positive_freqs, magnitude, linewidth=0.5)
+        axes[idx, 1].set_xlim(20, 5000)
+        axes[idx, 1].set_xlabel('Frequency (Hz)')
+        axes[idx, 1].set_ylabel('Magnitude')
+        axes[idx, 1].set_title(f'{name} - Spectrum')
+        axes[idx, 1].grid(True, alpha=0.3)
+        axes[idx, 1].set_xscale('log')
+        axes[idx, 1].set_yscale('log')
+        
+        # Add arrow for flow (흐름 화살표)
+        if idx < len(stages) - 1:
+            axes[idx, 0].text(0.5, -0.3, '↓', transform=axes[idx, 0].transAxes,
+                            fontsize=20, ha='center', color='red')
+    
+    axes[-1, 0].set_xlabel('Time (ms)')
+
+    plt.tight_layout()
+    plt.show()
+
 
 
 demo_synthesizer_presets()
+# demo_melody()
+# complete_synthesis_pipeline()
