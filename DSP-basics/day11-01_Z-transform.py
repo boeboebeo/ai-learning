@@ -29,4 +29,7 @@ def z_transform_basics():
     Mathematical Definition (수학적 정의):
     X(z) = Σ x[n] * z^(-n) for n = -∞ to +∞
 
+    Where z is a complex variable: z = e^(jω) (j = imaginary unit)
+
+
     """
